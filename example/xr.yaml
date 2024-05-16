@@ -1,0 +1,19 @@
+apiVersion: aws.crossplane.gympass.com/v1alpha1
+kind: XSecurityGroup
+metadata:
+  name: test-pretendImAHash
+  labels:
+    crossplane.io/claim-name: test
+spec:
+  deletionPolicy: Delete
+  description: foo-bar
+  ingressRules:
+    - cidrBlocks:
+        - 10.40.0.0/16
+        - 10.0.0.1/32
+      description: grant ingress on port 5432/TCP
+      fromPort: 5432
+      protocol: tcp
+      toPort: 5432
+  tags:
+    foo: bar

@@ -1,0 +1,7 @@
+---
+apiVersion: meta.pkg.crossplane.io/v1beta1
+kind: Function
+metadata:
+  name: function-aws-resource-observer
+spec:
+  package: placeholder/function-aws-resource-observer:v0.0.1
