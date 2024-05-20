@@ -46,10 +46,6 @@ func (c *CLI) newResourceGroupsTaggingClient() (*resourcegroupstaggingapi.Client
 		return nil, errors.Wrap(err, "loading default AWS SDK configuration")
 	}
 
-	if len(sdkConfig.Region) == 0 {
-		sdkConfig.Region = "us-east-1"
-	}
-
 	return resourcegroupstaggingapi.NewFromConfig(sdkConfig), nil
 }
 

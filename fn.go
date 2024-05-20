@@ -33,7 +33,7 @@ type Function struct {
 	client resourcegroupstaggingapi.GetResourcesAPIClient
 }
 
-// TODO(lcaparelli): extract into functions for readability
+// TODO(lcaparelli): extract into smaller functions for readability
 
 // RunFunction runs the Function.
 func (f *Function) RunFunction(ctx context.Context, req *fnv1beta1.RunFunctionRequest) (*fnv1beta1.RunFunctionResponse, error) {
