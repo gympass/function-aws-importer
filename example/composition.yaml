@@ -1,0 +1,114 @@
+---
+# Source: crossplane-manifests/templates/sg/composition.yaml
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: xsecuritygroups.aws.crossplane.gympass.com
+spec:
+  compositeTypeRef:
+    apiVersion: aws.crossplane.gympass.com/v1alpha1
+    kind: XSecurityGroup
+  mode: Pipeline
+  pipeline:
+  - step: ensure-security-group
+    functionRef:
+      name: function-patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      resources:
+      - name: securityGroup
+        base:
+          apiVersion: ec2.aws.upbound.io/v1beta1
+          kind: SecurityGroup
+          spec:
+            deletionPolicy: Delete        
+            forProvider:
+              vpcId: some-vpc
+              region: us-east-1
+              revokeRulesOnDelete: true
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.labels[crossplane.io/claim-name]
+          toFieldPath: metadata.name
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.labels[crossplane.io/claim-name]
+          toFieldPath: spec.forProvider.name
+
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.description
+          toFieldPath: spec.forProvider.description
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.deletionPolicy
+          toFieldPath: spec.deletionPolicy
+
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.tags
+          toFieldPath: spec.forProvider.tags
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.labels[crossplane.io/claim-name]
+          toFieldPath: spec.forProvider.tags[Name]
+
+        # TODO: check if we can make sure the first patch happens before the second.
+        # Last time I checked, all 'FromComposite' patches run before any 'ToComposite' patch.
+        # That can be a problem in the sense it needs two reconciliations to make this work,
+        # instead of one, and that might be a problem when we want to import things.
+        # It might not import right away and cause duplication errors.
+        # The time it takes between reconciliations of the XR might even be longer than we anticipate, because no errors occur.
+        - type: ToCompositeFieldPath
+          fromFieldPath: metadata.annotations[crossplane.io/external-name]
+          toFieldPath: status.externalName
+        - type: FromCompositeFieldPath
+          fromFieldPath: status.externalName
+          toFieldPath: spec.forProvider.tags[crossplane.io/external-name]
+
+  - step: ensure-ipv4-ingress-rules
+    functionRef:
+      name: function-go-templating
+    input:
+      apiVersion: gotemplating.fn.crossplane.io/v1beta1
+      kind: GoTemplate
+      source: Inline
+      delims:
+        left: "[["
+        right: "]]"
+      inline:
+        template: |
+          [[ $observedXR := .observed.composite.resource ]]
+          [[ $claimName := index $observedXR.metadata.labels "crossplane.io/claim-name" ]]
+          [[- range $rule := $observedXR.spec.ingressRules ]]
+          [[- range $i, $cidrBlock := $rule.cidrBlocks ]]
+          [[- $resourceName := printf "%s-%d-%s" $claimName $i "ipv4" ]]
+          apiVersion: ec2.aws.upbound.io/v1beta1
+          kind: SecurityGroupIngressRule
+          metadata:
+            name: [[ $resourceName ]]
+            annotations:
+              [[ setResourceNameAnnotation $resourceName ]]
+          spec:
+            deletionPolicy: Delete        
+            forProvider:
+              cidrIpv4: [[ $cidrBlock ]]
+              description: [[ $rule.description ]]
+              fromPort: [[ $rule.fromPort ]]
+              toPort: [[ $rule.toPort ]]
+              ipProtocol: [[ $rule.protocol ]]
+              region: us-east-1
+              securityGroupIdRef:
+                name: [[ $claimName ]]
+                policy:
+                  resolution: Required
+                  resolve: Always
+              tags:
+                [[- $observedXR.spec.tags | toYaml | nindent 8 ]]
+          ---
+          [[- end ]]
+          [[- end ]]
+  - step: import-sg-if-exists
+    functionRef:
+      name: function-aws-resource-observer
+    input:
+      resourceName: securityGroup
+  - step: automatically-detect-ready-composed-resources
+    functionRef:
+      name: function-auto-ready

@@ -1,0 +1,32 @@
+---
+apiVersion: pkg.crossplane.io/v1beta1
+kind: Function
+metadata:
+  name: function-aws-resource-observer
+  annotations:
+    # This tells crossplane beta render to connect to the function locally.
+    render.crossplane.io/runtime: Development
+spec:
+  # This is ignored when using the Development runtime.
+  package: function-aws-resource-observer
+---
+apiVersion: pkg.crossplane.io/v1beta1
+kind: Function
+metadata:
+  name: function-auto-ready
+spec:
+  package: xpkg.upbound.io/crossplane-contrib/function-auto-ready:v0.2.1
+---
+apiVersion: pkg.crossplane.io/v1beta1
+kind: Function
+metadata:
+  name: function-go-templating
+spec:
+  package: xpkg.upbound.io/crossplane-contrib/function-go-templating:v0.4.1
+---
+apiVersion: pkg.crossplane.io/v1beta1
+kind: Function
+metadata:
+  name: function-patch-and-transform
+spec:
+  package: xpkg.upbound.io/crossplane-contrib/function-patch-and-transform:v0.5.0
