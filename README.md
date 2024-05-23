@@ -36,6 +36,8 @@ importing happens:
   functionRef:
    name: function-aws-resource-observer
   input:
+   apiVersion: aws.fn.gympass.com/v1beta1
+   kind: Observer
    resourceName: securityGroup
 ```
 
@@ -77,6 +79,8 @@ spec:
      functionRef:
         name: function-aws-resource-observer
      input:
+        apiVersion: aws.fn.gympass.com/v1beta1
+        kind: Observer
         resourceName: securityGroup # must match the name of the resource, see comment above
 ```
 
