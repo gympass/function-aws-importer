@@ -37,7 +37,7 @@ importing happens:
    name: function-aws-importer
   input:
    apiVersion: aws.fn.gympass.com/v1beta1
-   kind: Observer
+   kind: Importer
    resourceName: securityGroup
 ```
 
@@ -80,7 +80,7 @@ spec:
         name: function-aws-importer
      input:
         apiVersion: aws.fn.gympass.com/v1beta1
-        kind: Observer
+        kind: Importer
         resourceName: securityGroup # must match the name of the resource, see comment above
 ```
 
