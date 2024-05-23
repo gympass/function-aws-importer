@@ -17,7 +17,7 @@ import (
 	"github.com/crossplane/function-sdk-go/resource"
 	"github.com/crossplane/function-sdk-go/response"
 
-	"github.com/gympass/function-aws-resource-observer/input/v1beta1"
+	"github.com/gympass/function-aws-importer/input/v1beta1"
 )
 
 const (

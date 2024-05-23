@@ -2,6 +2,6 @@
 apiVersion: meta.pkg.crossplane.io/v1beta1
 kind: Function
 metadata:
-  name: function-aws-resource-observer
+  name: function-aws-importer
 spec:
-  package: placeholder/function-aws-resource-observer:v0.0.1
+  package: placeholder/function-aws-importer:v0.0.1

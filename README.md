@@ -1,4 +1,4 @@
-# function-aws-resource-observer
+# function-aws-importer
 
 A Crossplane Composition Function that automatically imports existing resources to Crossplane even if their external-name
 is non-deterministic, like in EC2 Security Groups, Route53 Hosted Zones, etc.
@@ -34,7 +34,7 @@ importing happens:
 ```yaml
 - step: import-sg-if-exists
   functionRef:
-   name: function-aws-resource-observer
+   name: function-aws-importer
   input:
    apiVersion: aws.fn.gympass.com/v1beta1
    kind: Observer
@@ -77,7 +77,7 @@ spec:
           toFieldPath: spec.forProvider.tags[crossplane.io/external-name]
    - step: import-sg-if-exists
      functionRef:
-        name: function-aws-resource-observer
+        name: function-aws-importer
      input:
         apiVersion: aws.fn.gympass.com/v1beta1
         kind: Observer

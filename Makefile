@@ -16,5 +16,5 @@ endif
 	go generate ./...
 	docker build . --tag=runtime
 	rm package/*.xpkg; crossplane xpkg build -f package --embed-runtime-image=runtime
-	crossplane xpkg push -f package/*.xpkg $(FUNCTION_REGISTRY)/function-aws-resource-observer:dev
+	crossplane xpkg push -f package/*.xpkg $(FUNCTION_REGISTRY)/function-aws-importer:dev
 
