@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	"github.com/gympass/function-aws-resource-observer/input/v1beta1"
+	"github.com/gympass/function-aws-importer/input/v1beta1"
 )
 
 var _ resourcegroupstaggingapi.GetResourcesAPIClient = &mockGetResourcesAPIClient{}

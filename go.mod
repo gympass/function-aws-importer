@@ -1,4 +1,4 @@
-module github.com/gympass/function-aws-resource-observer
+module github.com/gympass/function-aws-importer
 
 go 1.21
 
