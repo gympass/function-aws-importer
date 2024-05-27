@@ -68,18 +68,69 @@ func (s *functionSuite) req() *fnv1beta1.RunFunctionRequest {
 								"vpcId": "some-vpc-id"
 							}
 						}
-					}
-					`)},
+					}`)},
+				"test-0-ipv4": {Resource: resource.MustStructJSON(`
+					{
+						"apiVersion": "ec2.aws.upbound.io/v1beta1",
+						"kind": "SecurityGroupIngressRule",
+						"metadata": {
+							"name": "test-0-ipv4"
+						},
+						"spec": {
+							"deletionPolicy": "Orphan",
+							"forProvider": {
+								"cidrIpv4": "192.1.0.0/16",
+								"description": "grant ingress on port 5432/TCP",
+								"fromPort": 5432,
+								"ipProtocol": "tcp",
+								"region": "us-east-1",
+								"securityGroupIdRef": {
+									"name": "test",
+									"policy": {
+										"resolution": "Required",
+										"resolve": "Always"
+									}
+								},
+								"toPort": 5432
+							}
+						}
+					}`)},
+				"test-1-ipv4": {Resource: resource.MustStructJSON(`
+					{
+						"apiVersion": "ec2.aws.upbound.io/v1beta1",
+						"kind": "SecurityGroupIngressRule",
+						"metadata": {
+							"name": "test-0-ipv4"
+						},
+						"spec": {
+							"deletionPolicy": "Orphan",
+							"forProvider": {
+								"cidrIpv4": "192.2.0.0/16",
+								"description": "grant ingress on port 5432/TCP",
+								"fromPort": 5432,
+								"ipProtocol": "tcp",
+								"region": "us-east-1",
+								"securityGroupIdRef": {
+									"name": "test",
+									"policy": {
+										"resolution": "Required",
+										"resolve": "Always"
+									}
+								},
+								"toPort": 5432
+							}
+						}
+					}`)},
 			},
 		},
 	}
 }
 
 func (s *functionSuite) SetupTest() {
-	s.in = &v1beta1.Input{ResourceName: "securityGroup"}
+	s.in = &v1beta1.Input{}
 }
 
-func (s *functionSuite) TestRunFunction_FilterMatchesResource_ShouldSetExternalNameAnnotation() {
+func (s *functionSuite) TestRunFunction_AllResourcesExist_ShouldSetExternalNameAnnotationOnAllResources() {
 	client := &mockGetResourcesAPIClient{}
 	client.On("GetResources", mock.Anything, mock.Anything, mock.Anything).
 		Return(&resourcegroupstaggingapi.GetResourcesOutput{
@@ -88,7 +139,7 @@ func (s *functionSuite) TestRunFunction_FilterMatchesResource_ShouldSetExternalN
 					ResourceARN: aws.String("resource1"),
 					Tags: []types.Tag{{
 						Key:   aws.String(externalNameTag),
-						Value: aws.String("sg-0ea154g1e2fd170bc"),
+						Value: aws.String("some-external-name"),
 					}},
 				},
 			},
@@ -100,35 +151,35 @@ func (s *functionSuite) TestRunFunction_FilterMatchesResource_ShouldSetExternalN
 	s.NoError(err)
 
 	s.Len(rsp.Results, 1)
-	s.Equal(fnv1beta1.Severity_SEVERITY_NORMAL, rsp.Results[0].Severity)
+	s.Equalf(fnv1beta1.Severity_SEVERITY_NORMAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
 	s.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl)
 
 	// TODO(lcaparelli): find a better way to do this, preferably one that also checks
 	// we didn't change anything else from desired.
 	var got string
 	s.NotPanics(func() {
-		got = rsp.GetDesired().GetResources()[string(s.in.ResourceName)].GetResource().
+		got = rsp.GetDesired().GetResources()["securityGroup"].GetResource().
 			GetFields()["metadata"].GetStructValue().
 			GetFields()["annotations"].GetStructValue().
 			GetFields()["crossplane.io/external-name"].GetStringValue()
 	})
+	s.Equal("some-external-name", got)
 
-	s.Equal("sg-0ea154g1e2fd170bc", got)
-}
+	s.NotPanics(func() {
+		got = rsp.GetDesired().GetResources()["test-0-ipv4"].GetResource().
+			GetFields()["metadata"].GetStructValue().
+			GetFields()["annotations"].GetStructValue().
+			GetFields()["crossplane.io/external-name"].GetStringValue()
+	})
+	s.Equal("some-external-name", got)
 
-func (s *functionSuite) TestRunFunction_NilInput_ShouldFail() {
-	req := &fnv1beta1.RunFunctionRequest{}
-
-	fn := &Function{log: logging.NewNopLogger()}
-	rsp, err := fn.RunFunction(context.Background(), req)
-
-	s.NoError(err)
-
-	s.Len(rsp.Results, 1)
-	s.Equal(fnv1beta1.Severity_SEVERITY_FATAL, rsp.Results[0].Severity)
-	s.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl)
-
-	s.Nil(rsp.Desired)
+	s.NotPanics(func() {
+		got = rsp.GetDesired().GetResources()["test-1-ipv4"].GetResource().
+			GetFields()["metadata"].GetStructValue().
+			GetFields()["annotations"].GetStructValue().
+			GetFields()["crossplane.io/external-name"].GetStringValue()
+	})
+	s.Equal("some-external-name", got)
 }
 
 func (s *functionSuite) TestRunFunction_InvalidInput_ShouldFail() {
@@ -137,20 +188,8 @@ func (s *functionSuite) TestRunFunction_InvalidInput_ShouldFail() {
 		in   *v1beta1.Input
 	}{
 		{
-			name: "Input has no resource name",
-			in: &v1beta1.Input{
-				ResourceName: "",
-				TagFilters: []v1beta1.TagFilter{{
-					Key:      "foo",
-					Strategy: "value",
-					Value:    "bar",
-				}},
-			},
-		},
-		{
 			name: "Input has a tag filter with no key",
 			in: &v1beta1.Input{
-				ResourceName: "securitGroup",
 				TagFilters: []v1beta1.TagFilter{{
 					Key:      "",
 					Strategy: "value",
@@ -161,7 +200,6 @@ func (s *functionSuite) TestRunFunction_InvalidInput_ShouldFail() {
 		{
 			name: "Input has a tag filter using 'value' strategy, but didn't inform the value",
 			in: &v1beta1.Input{
-				ResourceName: "securitGroup",
 				TagFilters: []v1beta1.TagFilter{{
 					Key:      "foo",
 					Strategy: "value",
@@ -172,7 +210,6 @@ func (s *functionSuite) TestRunFunction_InvalidInput_ShouldFail() {
 		{
 			name: "Input has a tag filter using 'valuePath' strategy, but didn't inform the value path",
 			in: &v1beta1.Input{
-				ResourceName: "securitGroup",
 				TagFilters: []v1beta1.TagFilter{{
 					Key:       "foo",
 					Strategy:  "valuePath",
@@ -183,7 +220,6 @@ func (s *functionSuite) TestRunFunction_InvalidInput_ShouldFail() {
 		{
 			name: "Input has a tag filter with no strategy",
 			in: &v1beta1.Input{
-				ResourceName: "securitGroup",
 				TagFilters: []v1beta1.TagFilter{{
 					Key:       "foo",
 					Strategy:  "",
@@ -194,7 +230,6 @@ func (s *functionSuite) TestRunFunction_InvalidInput_ShouldFail() {
 		{
 			name: "Input uses an invalid strategy in a tag filter",
 			in: &v1beta1.Input{
-				ResourceName: "securitGroup",
 				TagFilters: []v1beta1.TagFilter{{
 					Key:       "foo",
 					Strategy:  "invalid",
@@ -214,7 +249,7 @@ func (s *functionSuite) TestRunFunction_InvalidInput_ShouldFail() {
 			s.NoError(err)
 
 			s.Len(rsp.Results, 1)
-			s.Equal(fnv1beta1.Severity_SEVERITY_FATAL, rsp.Results[0].Severity)
+			s.Equalf(fnv1beta1.Severity_SEVERITY_FATAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
 			s.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl)
 
 			s.Nil(rsp.Desired)
@@ -222,7 +257,7 @@ func (s *functionSuite) TestRunFunction_InvalidInput_ShouldFail() {
 	}
 }
 
-func (s *functionSuite) TestRunFunction_ExternalNameIsSetAlready_ShouldDoNothing() {
+func (s *functionSuite) TestRunFunction_AllExternalNamesAreSetAlready_ShouldDoNothing() {
 	req := s.req()
 	req.Observed = &fnv1beta1.State{
 		Resources: map[string]*fnv1beta1.Resource{
@@ -234,7 +269,32 @@ func (s *functionSuite) TestRunFunction_ExternalNameIsSetAlready_ShouldDoNothing
 						"annotations": {
 							"crossplane.io/composition-resource-name": "securityGroup",
 							"crossplane.io/external-name": "sg-0ea154g1e2fd170bc"
-						}
+						},
+						"name": "test"
+					}
+				}`)},
+			"test-0-ipv4": {Resource: resource.MustStructJSON(`
+				{
+					"apiVersion": "ec2.aws.upbound.io/v1beta1",
+					"kind": "SecurityGroupIngressRule",
+					"metadata": {
+						"annotations": {
+							"crossplane.io/composition-resource-name": "test-0-ipv4",
+							"crossplane.io/external-name": "sgr-01feb4r2bgb6b4c58"
+						},
+						"name": "test-0-ipv4"
+					}
+				}`)},
+			"test-1-ipv4": {Resource: resource.MustStructJSON(`
+				{
+					"apiVersion": "ec2.aws.upbound.io/v1beta1",
+					"kind": "SecurityGroupIngressRule",
+					"metadata": {
+						"annotations": {
+							"crossplane.io/composition-resource-name": "test-1-ipv4",
+							"crossplane.io/external-name": "sgr-06ebk86u45405h434"
+						},
+						"name": "test-1-ipv4"
 					}
 				}`)},
 		},
@@ -246,7 +306,7 @@ func (s *functionSuite) TestRunFunction_ExternalNameIsSetAlready_ShouldDoNothing
 	s.NoError(err)
 
 	s.Len(rsp.Results, 1)
-	s.Equal(fnv1beta1.Severity_SEVERITY_NORMAL, rsp.Results[0].Severity)
+	s.Equalf(fnv1beta1.Severity_SEVERITY_NORMAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
 	s.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl)
 
 	s.Equal(req.Desired, rsp.Desired)
@@ -265,7 +325,7 @@ func (s *functionSuite) TestRunFunction_UnresolvableTagFilter_ShouldFail() {
 	s.NoError(err)
 
 	s.Len(rsp.Results, 1)
-	s.Equal(fnv1beta1.Severity_SEVERITY_FATAL, rsp.Results[0].Severity)
+	s.Equalf(fnv1beta1.Severity_SEVERITY_FATAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
 	s.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl)
 
 	s.Equal(s.req().Desired, rsp.Desired)
@@ -287,7 +347,7 @@ func (s *functionSuite) TestRunFunction_MultipleTagFilterMatches_ShouldFail() {
 	s.NoError(err)
 
 	s.Len(rsp.Results, 1)
-	s.Equal(fnv1beta1.Severity_SEVERITY_FATAL, rsp.Results[0].Severity)
+	s.Equalf(fnv1beta1.Severity_SEVERITY_FATAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
 	s.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl)
 
 	s.Equal(s.req().Desired, rsp.Desired)
@@ -304,7 +364,7 @@ func (s *functionSuite) TestRunFunction_NoTagFilterMatches_ShouldDoNothing() {
 	s.NoError(err)
 
 	s.Len(rsp.Results, 1)
-	s.Equal(fnv1beta1.Severity_SEVERITY_NORMAL, rsp.Results[0].Severity)
+	s.Equalf(fnv1beta1.Severity_SEVERITY_NORMAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
 	s.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl)
 
 	s.Equal(s.req().Desired, rsp.Desired)
@@ -331,7 +391,7 @@ func (s *functionSuite) TestRunFunction_FilterMatchesButResourceHasNoExternalNam
 	s.NoError(err)
 
 	s.Len(rsp.Results, 1)
-	s.Equal(fnv1beta1.Severity_SEVERITY_FATAL, rsp.Results[0].Severity)
+	s.Equalf(fnv1beta1.Severity_SEVERITY_FATAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
 	s.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl)
 
 	s.Equal(s.req().Desired, rsp.Desired)
