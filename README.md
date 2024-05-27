@@ -6,7 +6,7 @@ is non-deterministic, like in EC2 Security Groups, Route53 Hosted Zones, etc.
 It filters resources from AWS using the 
 [Resource Groups Tagging API ](https://docs.aws.amazon.com/resourcegroupstagging/latest/APIReference/overview.html) based
 on tags Crossplane inserts automatically (`crossplane-name` and `crossplane-kind`), then gets the external-name value from
-one the resource's tags, specifically `crossplane.io/external-name`.
+one the resource's tags, specifically `crossplane-external-name`.
 
 Its main goal is to avoid errors or duplication of resources on AWS when a Managed Resource is deleted by mistake, or in 
 catastrophic events that lead to the recreation of Kubernetes clusters while the external resources still exist on AWS.

@@ -60,7 +60,7 @@ spec:
           toFieldPath: status.externalName
         - type: FromCompositeFieldPath
           fromFieldPath: status.externalName
-          toFieldPath: spec.forProvider.tags[crossplane.io/external-name]
+          toFieldPath: spec.forProvider.tags[crossplane-external-name]
 
   - step: ensure-ipv4-ingress-rules
     functionRef:

@@ -22,7 +22,7 @@ import (
 
 const (
 	externalNameAnnotationPath = `metadata.annotations["crossplane.io/external-name"]`
-	externalNameTag            = "crossplane.io/external-name"
+	externalNameTag            = "crossplane-external-name"
 )
 
 // Function returns whatever response you ask it to.
