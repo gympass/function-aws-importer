@@ -25,9 +25,8 @@ type Input struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	ResourceName resource.Name `json:"resourceName"`
 	// +optional
-	TagFilters []TagFilter `json:"tagFilters"`
+	TagFilters []TagFilter `json:"tagFilters,omitempty"`
 }
 
 func (in *Input) ResolveTagFilters(xr *resource.Composite) ([]types.TagFilter, error) {
@@ -58,10 +57,6 @@ func (in *Input) ResolveTagFilters(xr *resource.Composite) ([]types.TagFilter, e
 }
 
 func (in *Input) Validate() error {
-	if len(in.ResourceName) == 0 {
-		return errors.New("resourceName must not be empty")
-	}
-
 	for _, tf := range in.TagFilters {
 		if err := tf.validate(); err != nil {
 			return fmt.Errorf("invalid tag filter: %v", err)

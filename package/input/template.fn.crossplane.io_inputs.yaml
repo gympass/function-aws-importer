@@ -38,11 +38,6 @@ spec:
             type: string
           metadata:
             type: object
-          resourceName:
-            description: |-
-              A Name uniquely identifies a composed resource within a Composition Function
-              pipeline. It's not the resource's metadata.name.
-            type: string
           tagFilters:
             items:
               properties:
@@ -62,8 +57,6 @@ spec:
               - strategy
               type: object
             type: array
-        required:
-        - resourceName
         type: object
     served: true
     storage: true
