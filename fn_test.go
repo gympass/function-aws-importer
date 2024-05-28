@@ -5,31 +5,18 @@ import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi"
 	"github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi/types"
 	"github.com/crossplane/crossplane-runtime/pkg/logging"
+	runtimeresource "github.com/crossplane/crossplane-runtime/pkg/resource"
 	fnv1beta1 "github.com/crossplane/function-sdk-go/proto/v1beta1"
 	"github.com/crossplane/function-sdk-go/resource"
 	"github.com/crossplane/function-sdk-go/response"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/gympass/function-aws-importer/input/v1beta1"
+	"github.com/gympass/function-aws-importer/internal/test"
 )
-
-var _ resourcegroupstaggingapi.GetResourcesAPIClient = &mockGetResourcesAPIClient{}
-
-// TODO(lcaparelli): consider writing a fake implementation instead,
-// we can't properly test the filters we build with a mock
-type mockGetResourcesAPIClient struct {
-	mock.Mock
-}
-
-func (m *mockGetResourcesAPIClient) GetResources(ctx context.Context, input *resourcegroupstaggingapi.GetResourcesInput, f ...func(*resourcegroupstaggingapi.Options)) (*resourcegroupstaggingapi.GetResourcesOutput, error) {
-	called := m.Called(ctx, input, f)
-	return called.Get(0).(*resourcegroupstaggingapi.GetResourcesOutput), called.Error(1)
-}
 
 func TestRunFunctionSuite(t *testing.T) {
 	suite.Run(t, &functionSuite{})
@@ -131,19 +118,58 @@ func (s *functionSuite) SetupTest() {
 }
 
 func (s *functionSuite) TestRunFunction_AllResourcesExist_ShouldSetExternalNameAnnotationOnAllResources() {
-	client := &mockGetResourcesAPIClient{}
-	client.On("GetResources", mock.Anything, mock.Anything, mock.Anything).
-		Return(&resourcegroupstaggingapi.GetResourcesOutput{
-			ResourceTagMappingList: []types.ResourceTagMapping{
-				{
-					ResourceARN: aws.String("resource1"),
-					Tags: []types.Tag{{
+	client := &test.FakeGetResourcesAPIClient{
+		Resources: []types.ResourceTagMapping{
+			{
+				Tags: []types.Tag{
+					{
 						Key:   aws.String(externalNameTag),
 						Value: aws.String("some-external-name"),
-					}},
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyName),
+						Value: aws.String("test"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyKind),
+						Value: aws.String("securitygroups.ec2.aws.upbound.io"),
+					},
 				},
 			},
-		}, nil)
+			{
+				Tags: []types.Tag{
+					{
+						Key:   aws.String(externalNameTag),
+						Value: aws.String("some-external-name"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyName),
+						Value: aws.String("test-0-ipv4"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyKind),
+						Value: aws.String("securitygroupingressrules.ec2.aws.upbound.io"),
+					},
+				},
+			},
+			{
+				Tags: []types.Tag{
+					{
+						Key:   aws.String(externalNameTag),
+						Value: aws.String("some-external-name"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyName),
+						Value: aws.String("test-1-ipv4"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyKind),
+						Value: aws.String("securitygroupingressrules.ec2.aws.upbound.io"),
+					},
+				},
+			},
+		},
+	}
 
 	fn := &Function{log: logging.NewNopLogger(), client: client}
 	rsp, err := fn.RunFunction(context.Background(), s.req())
@@ -332,14 +358,42 @@ func (s *functionSuite) TestRunFunction_UnresolvableTagFilter_ShouldFail() {
 }
 
 func (s *functionSuite) TestRunFunction_MultipleTagFilterMatches_ShouldFail() {
-	client := &mockGetResourcesAPIClient{}
-	client.On("GetResources", mock.Anything, mock.Anything, mock.Anything).
-		Return(&resourcegroupstaggingapi.GetResourcesOutput{
-			ResourceTagMappingList: []types.ResourceTagMapping{
-				{ResourceARN: aws.String("resource1")},
-				{ResourceARN: aws.String("resource2")},
+	client := &test.FakeGetResourcesAPIClient{
+		Resources: []types.ResourceTagMapping{
+			{
+				Tags: []types.Tag{
+					{
+						Key:   aws.String(externalNameTag),
+						Value: aws.String("some-external-name"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyName),
+						Value: aws.String("test"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyKind),
+						Value: aws.String("securitygroups.ec2.aws.upbound.io"),
+					},
+				},
 			},
-		}, nil)
+			{
+				Tags: []types.Tag{
+					{
+						Key:   aws.String(externalNameTag),
+						Value: aws.String("another-external-name"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyName),
+						Value: aws.String("test"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyKind),
+						Value: aws.String("securitygroups.ec2.aws.upbound.io"),
+					},
+				},
+			},
+		},
+	}
 
 	fn := &Function{log: logging.NewNopLogger(), client: client}
 	rsp, err := fn.RunFunction(context.Background(), s.req())
@@ -354,9 +408,7 @@ func (s *functionSuite) TestRunFunction_MultipleTagFilterMatches_ShouldFail() {
 }
 
 func (s *functionSuite) TestRunFunction_NoTagFilterMatches_ShouldDoNothing() {
-	client := &mockGetResourcesAPIClient{}
-	client.On("GetResources", mock.Anything, mock.Anything, mock.Anything).
-		Return(&resourcegroupstaggingapi.GetResourcesOutput{}, nil)
+	client := &test.FakeGetResourcesAPIClient{}
 
 	fn := &Function{log: logging.NewNopLogger(), client: client}
 	rsp, err := fn.RunFunction(context.Background(), s.req())
@@ -371,19 +423,46 @@ func (s *functionSuite) TestRunFunction_NoTagFilterMatches_ShouldDoNothing() {
 }
 
 func (s *functionSuite) TestRunFunction_FilterMatchesButResourceHasNoExternalNameTag_ShouldFail() {
-	client := &mockGetResourcesAPIClient{}
-	client.On("GetResources", mock.Anything, mock.Anything, mock.Anything).
-		Return(&resourcegroupstaggingapi.GetResourcesOutput{
-			ResourceTagMappingList: []types.ResourceTagMapping{
-				{
-					ResourceARN: aws.String("resource1"),
-					Tags: []types.Tag{{
-						Key:   aws.String("key"),
-						Value: aws.String("value"),
-					}},
+	client := &test.FakeGetResourcesAPIClient{
+		Resources: []types.ResourceTagMapping{
+			{
+				Tags: []types.Tag{
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyName),
+						Value: aws.String("test"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyKind),
+						Value: aws.String("securitygroups.ec2.aws.upbound.io"),
+					},
 				},
 			},
-		}, nil)
+			{
+				Tags: []types.Tag{
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyName),
+						Value: aws.String("test-0-ipv4"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyKind),
+						Value: aws.String("securitygroupingressrules.ec2.aws.upbound.io"),
+					},
+				},
+			},
+			{
+				Tags: []types.Tag{
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyName),
+						Value: aws.String("test-1-ipv4"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyKind),
+						Value: aws.String("securitygroupingressrules.ec2.aws.upbound.io"),
+					},
+				},
+			},
+		},
+	}
 
 	fn := &Function{log: logging.NewNopLogger(), client: client}
 	rsp, err := fn.RunFunction(context.Background(), s.req())
