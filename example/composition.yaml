@@ -104,11 +104,9 @@ spec:
           ---
           [[- end ]]
           [[- end ]]
-  - step: import-sg-if-exists
+  - step: import-resources-if-exist
     functionRef:
       name: function-aws-importer
-    input:
-      resourceName: securityGroup
   - step: automatically-detect-ready-composed-resources
     functionRef:
       name: function-auto-ready

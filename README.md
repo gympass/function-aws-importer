@@ -22,27 +22,22 @@ similar to this:
   toFieldPath: status.externalName
 - type: FromCompositeFieldPath
   fromFieldPath: status.externalName
-  toFieldPath: spec.forProvider.tags[crossplane.io/external-name]
+  toFieldPath: spec.forProvider.tags[crossplane-external-name]
 ```
 
 When the resource is first created, Crossplane will set the annotation automatically, and the next time the composition
 is rendered, these patches will run and ensure the tag is present, with the value that's set in the annotation.
 
-You can use the function by inserting a pipeline step that runs after you define the Managed Resource you want to ensure
-importing happens:
+You can use the function by inserting a pipeline step that runs after you define the Managed Resources you want to ensure
+importing happens for:
 
 ```yaml
 - step: import-sg-if-exists
   functionRef:
    name: function-aws-importer
-  input:
-   apiVersion: aws.fn.gympass.com/v1beta1
-   kind: Importer
-   resourceName: securityGroup
 ```
 
-`input.resourceName` must match the name that was assigned to the Managed Resource in the composition (not to be confused
-with the actual resource `metadata.name`).
+By inserting this patch as shown above, the function will try to import all resources that were defined in previous steps.
 
 This incomplete composition illustrates how they must complement each other:
 
@@ -59,7 +54,7 @@ spec:
         apiVersion: pt.fn.crossplane.io/v1beta1
         kind: Resources
         resources:
-        - name: securityGroup # this name must match the one in the function's input
+        - name: securityGroup
         base:
            apiVersion: ec2.aws.upbound.io/v1beta1
            kind: SecurityGroup
@@ -74,14 +69,10 @@ spec:
           toFieldPath: status.externalName
         - type: FromCompositeFieldPath
           fromFieldPath: status.externalName
-          toFieldPath: spec.forProvider.tags[crossplane.io/external-name]
+          toFieldPath: spec.forProvider.tags[crossplane-external-name]
    - step: import-sg-if-exists
      functionRef:
         name: function-aws-importer
-     input:
-        apiVersion: aws.fn.gympass.com/v1beta1
-        kind: Importer
-        resourceName: securityGroup # must match the name of the resource, see comment above
 ```
 
 ## Development
