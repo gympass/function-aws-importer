@@ -87,7 +87,7 @@ func (s *functionSuite) req() *fnv1beta1.RunFunctionRequest {
 						"apiVersion": "ec2.aws.upbound.io/v1beta1",
 						"kind": "SecurityGroupIngressRule",
 						"metadata": {
-							"name": "test-0-ipv4"
+							"name": "test-1-ipv4"
 						},
 						"spec": {
 							"deletionPolicy": "Orphan",
@@ -183,29 +183,92 @@ func (s *functionSuite) TestRunFunction_AllResourcesExist_ShouldSetExternalNameA
 	// TODO(lcaparelli): find a better way to do this, preferably one that also checks
 	// we didn't change anything else from desired.
 	var got string
-	s.NotPanics(func() {
-		got = rsp.GetDesired().GetResources()["securityGroup"].GetResource().
-			GetFields()["metadata"].GetStructValue().
-			GetFields()["annotations"].GetStructValue().
-			GetFields()["crossplane.io/external-name"].GetStringValue()
-	})
+	got = rsp.GetDesired().GetResources()["securityGroup"].GetResource().
+		GetFields()["metadata"].GetStructValue().
+		GetFields()["annotations"].GetStructValue().
+		GetFields()["crossplane.io/external-name"].GetStringValue()
 	s.Equal("some-external-name", got)
 
-	s.NotPanics(func() {
-		got = rsp.GetDesired().GetResources()["test-0-ipv4"].GetResource().
-			GetFields()["metadata"].GetStructValue().
-			GetFields()["annotations"].GetStructValue().
-			GetFields()["crossplane.io/external-name"].GetStringValue()
-	})
+	got = rsp.GetDesired().GetResources()["test-0-ipv4"].GetResource().
+		GetFields()["metadata"].GetStructValue().
+		GetFields()["annotations"].GetStructValue().
+		GetFields()["crossplane.io/external-name"].GetStringValue()
 	s.Equal("some-external-name", got)
 
-	s.NotPanics(func() {
-		got = rsp.GetDesired().GetResources()["test-1-ipv4"].GetResource().
-			GetFields()["metadata"].GetStructValue().
-			GetFields()["annotations"].GetStructValue().
-			GetFields()["crossplane.io/external-name"].GetStringValue()
-	})
+	got = rsp.GetDesired().GetResources()["test-1-ipv4"].GetResource().
+		GetFields()["metadata"].GetStructValue().
+		GetFields()["annotations"].GetStructValue().
+		GetFields()["crossplane.io/external-name"].GetStringValue()
 	s.Equal("some-external-name", got)
+}
+
+func (s *functionSuite) TestRunFunction_SomeResourcesExist_ShouldSetExternalNameAnnotationOnSomeResources() {
+	client := &test.FakeGetResourcesAPIClient{
+		Resources: []types.ResourceTagMapping{
+			{
+				Tags: []types.Tag{
+					{
+						Key:   aws.String(externalNameTag),
+						Value: aws.String("some-external-name"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyName),
+						Value: aws.String("test"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyKind),
+						Value: aws.String("securitygroups.ec2.aws.upbound.io"),
+					},
+				},
+			},
+			{
+				Tags: []types.Tag{
+					{
+						Key:   aws.String(externalNameTag),
+						Value: aws.String("some-external-name"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyName),
+						Value: aws.String("test-0-ipv4"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyKind),
+						Value: aws.String("securitygroupingressrules.ec2.aws.upbound.io"),
+					},
+				},
+			},
+		},
+	}
+
+	fn := &Function{log: logging.NewNopLogger(), client: client}
+	rsp, err := fn.RunFunction(context.Background(), s.req())
+
+	s.NoError(err)
+
+	s.Len(rsp.Results, 1)
+	s.Equalf(fnv1beta1.Severity_SEVERITY_NORMAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
+	s.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl)
+
+	// TODO(lcaparelli): find a better way to do this, preferably one that also checks
+	// we didn't change anything else from desired.
+	var got string
+	got = rsp.GetDesired().GetResources()["securityGroup"].GetResource().
+		GetFields()["metadata"].GetStructValue().
+		GetFields()["annotations"].GetStructValue().
+		GetFields()["crossplane.io/external-name"].GetStringValue()
+	s.Equal("some-external-name", got)
+
+	got = rsp.GetDesired().GetResources()["test-0-ipv4"].GetResource().
+		GetFields()["metadata"].GetStructValue().
+		GetFields()["annotations"].GetStructValue().
+		GetFields()["crossplane.io/external-name"].GetStringValue()
+	s.Equal("some-external-name", got)
+
+	got = rsp.GetDesired().GetResources()["test-1-ipv4"].GetResource().
+		GetFields()["metadata"].GetStructValue().
+		GetFields()["annotations"].GetStructValue().
+		GetFields()["crossplane.io/external-name"].GetStringValue()
+	s.Empty(got)
 }
 
 func (s *functionSuite) TestRunFunction_InvalidInput_ShouldFail() {
@@ -336,6 +399,127 @@ func (s *functionSuite) TestRunFunction_AllExternalNamesAreSetAlready_ShouldDoNo
 	s.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl)
 
 	s.Equal(req.Desired, rsp.Desired)
+}
+
+func (s *functionSuite) TestRunFunction_SomeExternalNamesAreSetAlready_ShouldSetOthers() {
+	client := &test.FakeGetResourcesAPIClient{
+		Resources: []types.ResourceTagMapping{
+			{
+				Tags: []types.Tag{
+					{
+						Key:   aws.String(externalNameTag),
+						Value: aws.String("some-external-name"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyName),
+						Value: aws.String("test"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyKind),
+						Value: aws.String("securitygroups.ec2.aws.upbound.io"),
+					},
+				},
+			},
+			{
+				Tags: []types.Tag{
+					{
+						Key:   aws.String(externalNameTag),
+						Value: aws.String("some-external-name"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyName),
+						Value: aws.String("test-0-ipv4"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyKind),
+						Value: aws.String("securitygroupingressrules.ec2.aws.upbound.io"),
+					},
+				},
+			},
+			{
+				Tags: []types.Tag{
+					{
+						Key:   aws.String(externalNameTag),
+						Value: aws.String("some-external-name"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyName),
+						Value: aws.String("test-1-ipv4"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyKind),
+						Value: aws.String("securitygroupingressrules.ec2.aws.upbound.io"),
+					},
+				},
+			},
+		},
+	}
+
+	req := s.req()
+	req.Observed = &fnv1beta1.State{
+		Resources: map[string]*fnv1beta1.Resource{
+			"securityGroup": {Resource: resource.MustStructJSON(`
+				{
+					"apiVersion": "ec2.test.upbound.io/v1beta1",
+					"kind": "SecurityGroup",
+					"metadata": {
+						"annotations": {
+							"crossplane.io/composition-resource-name": "securityGroup",
+							"crossplane.io/external-name": "sg-0ea154g1e2fd170bc"
+						},
+						"name": "test"
+					}
+				}`)},
+			"test-0-ipv4": {Resource: resource.MustStructJSON(`
+				{
+					"apiVersion": "ec2.test.upbound.io/v1beta1",
+					"kind": "SecurityGroupIngressRule",
+					"metadata": {
+						"annotations": {
+							"crossplane.io/composition-resource-name": "test-0-ipv4"
+						},
+						"name": "test-0-ipv4"
+					}
+				}`)},
+			"test-1-ipv4": {Resource: resource.MustStructJSON(`
+				{
+					"apiVersion": "ec2.test.upbound.io/v1beta1",
+					"kind": "SecurityGroupIngressRule",
+					"metadata": {
+						"annotations": {
+							"crossplane.io/composition-resource-name": "test-1-ipv4"
+						},
+						"name": "test-1-ipv4"
+					}
+				}`)},
+		},
+	}
+
+	fn := &Function{log: logging.NewNopLogger(), client: client}
+	rsp, err := fn.RunFunction(context.Background(), req)
+
+	s.NoError(err)
+
+	s.Len(rsp.Results, 1)
+	s.Equalf(fnv1beta1.Severity_SEVERITY_NORMAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
+	s.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl)
+
+	s.Equal(req.Desired.Resources["securityGroup"], rsp.Desired.Resources["securityGroup"])
+
+	// TODO(lcaparelli): find a better way to do this, preferably one that also checks
+	// we didn't change anything else from desired.
+	var got string
+	got = rsp.GetDesired().GetResources()["test-0-ipv4"].GetResource().
+		GetFields()["metadata"].GetStructValue().
+		GetFields()["annotations"].GetStructValue().
+		GetFields()["crossplane.io/external-name"].GetStringValue()
+	s.Equal("some-external-name", got)
+
+	got = rsp.GetDesired().GetResources()["test-1-ipv4"].GetResource().
+		GetFields()["metadata"].GetStructValue().
+		GetFields()["annotations"].GetStructValue().
+		GetFields()["crossplane.io/external-name"].GetStringValue()
+	s.Equal("some-external-name", got)
 }
 
 func (s *functionSuite) TestRunFunction_UnresolvableTagFilter_ShouldFail() {
