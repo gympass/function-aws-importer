@@ -5,31 +5,18 @@ import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi"
 	"github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi/types"
 	"github.com/crossplane/crossplane-runtime/pkg/logging"
+	runtimeresource "github.com/crossplane/crossplane-runtime/pkg/resource"
 	fnv1beta1 "github.com/crossplane/function-sdk-go/proto/v1beta1"
 	"github.com/crossplane/function-sdk-go/resource"
 	"github.com/crossplane/function-sdk-go/response"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/gympass/function-aws-importer/input/v1beta1"
+	"github.com/gympass/function-aws-importer/internal/test"
 )
-
-var _ resourcegroupstaggingapi.GetResourcesAPIClient = &mockGetResourcesAPIClient{}
-
-// TODO(lcaparelli): consider writing a fake implementation instead,
-// we can't properly test the filters we build with a mock
-type mockGetResourcesAPIClient struct {
-	mock.Mock
-}
-
-func (m *mockGetResourcesAPIClient) GetResources(ctx context.Context, input *resourcegroupstaggingapi.GetResourcesInput, f ...func(*resourcegroupstaggingapi.Options)) (*resourcegroupstaggingapi.GetResourcesOutput, error) {
-	called := m.Called(ctx, input, f)
-	return called.Get(0).(*resourcegroupstaggingapi.GetResourcesOutput), called.Error(1)
-}
 
 func TestRunFunctionSuite(t *testing.T) {
 	suite.Run(t, &functionSuite{})
@@ -68,31 +55,121 @@ func (s *functionSuite) req() *fnv1beta1.RunFunctionRequest {
 								"vpcId": "some-vpc-id"
 							}
 						}
-					}
-					`)},
+					}`)},
+				"test-0-ipv4": {Resource: resource.MustStructJSON(`
+					{
+						"apiVersion": "ec2.aws.upbound.io/v1beta1",
+						"kind": "SecurityGroupIngressRule",
+						"metadata": {
+							"name": "test-0-ipv4"
+						},
+						"spec": {
+							"deletionPolicy": "Orphan",
+							"forProvider": {
+								"cidrIpv4": "192.1.0.0/16",
+								"description": "grant ingress on port 5432/TCP",
+								"fromPort": 5432,
+								"ipProtocol": "tcp",
+								"region": "us-east-1",
+								"securityGroupIdRef": {
+									"name": "test",
+									"policy": {
+										"resolution": "Required",
+										"resolve": "Always"
+									}
+								},
+								"toPort": 5432
+							}
+						}
+					}`)},
+				"test-1-ipv4": {Resource: resource.MustStructJSON(`
+					{
+						"apiVersion": "ec2.aws.upbound.io/v1beta1",
+						"kind": "SecurityGroupIngressRule",
+						"metadata": {
+							"name": "test-1-ipv4"
+						},
+						"spec": {
+							"deletionPolicy": "Orphan",
+							"forProvider": {
+								"cidrIpv4": "192.2.0.0/16",
+								"description": "grant ingress on port 5432/TCP",
+								"fromPort": 5432,
+								"ipProtocol": "tcp",
+								"region": "us-east-1",
+								"securityGroupIdRef": {
+									"name": "test",
+									"policy": {
+										"resolution": "Required",
+										"resolve": "Always"
+									}
+								},
+								"toPort": 5432
+							}
+						}
+					}`)},
 			},
 		},
 	}
 }
 
 func (s *functionSuite) SetupTest() {
-	s.in = &v1beta1.Input{ResourceName: "securityGroup"}
+	s.in = &v1beta1.Input{}
 }
 
-func (s *functionSuite) TestRunFunction_FilterMatchesResource_ShouldSetExternalNameAnnotation() {
-	client := &mockGetResourcesAPIClient{}
-	client.On("GetResources", mock.Anything, mock.Anything, mock.Anything).
-		Return(&resourcegroupstaggingapi.GetResourcesOutput{
-			ResourceTagMappingList: []types.ResourceTagMapping{
-				{
-					ResourceARN: aws.String("resource1"),
-					Tags: []types.Tag{{
+func (s *functionSuite) TestRunFunction_AllResourcesExist_ShouldSetExternalNameAnnotationOnAllResources() {
+	client := &test.FakeGetResourcesAPIClient{
+		Resources: []types.ResourceTagMapping{
+			{
+				Tags: []types.Tag{
+					{
 						Key:   aws.String(externalNameTag),
-						Value: aws.String("sg-0ea154g1e2fd170bc"),
-					}},
+						Value: aws.String("some-external-name"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyName),
+						Value: aws.String("test"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyKind),
+						Value: aws.String("securitygroups.ec2.aws.upbound.io"),
+					},
 				},
 			},
-		}, nil)
+			{
+				Tags: []types.Tag{
+					{
+						Key:   aws.String(externalNameTag),
+						Value: aws.String("some-external-name"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyName),
+						Value: aws.String("test-0-ipv4"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyKind),
+						Value: aws.String("securitygroupingressrules.ec2.aws.upbound.io"),
+					},
+				},
+			},
+			{
+				Tags: []types.Tag{
+					{
+						Key:   aws.String(externalNameTag),
+						Value: aws.String("some-external-name"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyName),
+						Value: aws.String("test-1-ipv4"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyKind),
+						Value: aws.String("securitygroupingressrules.ec2.aws.upbound.io"),
+					},
+				},
+			},
+		},
+	}
 
 	fn := &Function{log: logging.NewNopLogger(), client: client}
 	rsp, err := fn.RunFunction(context.Background(), s.req())
@@ -100,35 +177,98 @@ func (s *functionSuite) TestRunFunction_FilterMatchesResource_ShouldSetExternalN
 	s.NoError(err)
 
 	s.Len(rsp.Results, 1)
-	s.Equal(fnv1beta1.Severity_SEVERITY_NORMAL, rsp.Results[0].Severity)
+	s.Equalf(fnv1beta1.Severity_SEVERITY_NORMAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
 	s.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl)
 
 	// TODO(lcaparelli): find a better way to do this, preferably one that also checks
 	// we didn't change anything else from desired.
 	var got string
-	s.NotPanics(func() {
-		got = rsp.GetDesired().GetResources()[string(s.in.ResourceName)].GetResource().
-			GetFields()["metadata"].GetStructValue().
-			GetFields()["annotations"].GetStructValue().
-			GetFields()["crossplane.io/external-name"].GetStringValue()
-	})
+	got = rsp.GetDesired().GetResources()["securityGroup"].GetResource().
+		GetFields()["metadata"].GetStructValue().
+		GetFields()["annotations"].GetStructValue().
+		GetFields()["crossplane.io/external-name"].GetStringValue()
+	s.Equal("some-external-name", got)
 
-	s.Equal("sg-0ea154g1e2fd170bc", got)
+	got = rsp.GetDesired().GetResources()["test-0-ipv4"].GetResource().
+		GetFields()["metadata"].GetStructValue().
+		GetFields()["annotations"].GetStructValue().
+		GetFields()["crossplane.io/external-name"].GetStringValue()
+	s.Equal("some-external-name", got)
+
+	got = rsp.GetDesired().GetResources()["test-1-ipv4"].GetResource().
+		GetFields()["metadata"].GetStructValue().
+		GetFields()["annotations"].GetStructValue().
+		GetFields()["crossplane.io/external-name"].GetStringValue()
+	s.Equal("some-external-name", got)
 }
 
-func (s *functionSuite) TestRunFunction_NilInput_ShouldFail() {
-	req := &fnv1beta1.RunFunctionRequest{}
+func (s *functionSuite) TestRunFunction_SomeResourcesExist_ShouldSetExternalNameAnnotationOnSomeResources() {
+	client := &test.FakeGetResourcesAPIClient{
+		Resources: []types.ResourceTagMapping{
+			{
+				Tags: []types.Tag{
+					{
+						Key:   aws.String(externalNameTag),
+						Value: aws.String("some-external-name"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyName),
+						Value: aws.String("test"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyKind),
+						Value: aws.String("securitygroups.ec2.aws.upbound.io"),
+					},
+				},
+			},
+			{
+				Tags: []types.Tag{
+					{
+						Key:   aws.String(externalNameTag),
+						Value: aws.String("some-external-name"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyName),
+						Value: aws.String("test-0-ipv4"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyKind),
+						Value: aws.String("securitygroupingressrules.ec2.aws.upbound.io"),
+					},
+				},
+			},
+		},
+	}
 
-	fn := &Function{log: logging.NewNopLogger()}
-	rsp, err := fn.RunFunction(context.Background(), req)
+	fn := &Function{log: logging.NewNopLogger(), client: client}
+	rsp, err := fn.RunFunction(context.Background(), s.req())
 
 	s.NoError(err)
 
 	s.Len(rsp.Results, 1)
-	s.Equal(fnv1beta1.Severity_SEVERITY_FATAL, rsp.Results[0].Severity)
+	s.Equalf(fnv1beta1.Severity_SEVERITY_NORMAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
 	s.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl)
 
-	s.Nil(rsp.Desired)
+	// TODO(lcaparelli): find a better way to do this, preferably one that also checks
+	// we didn't change anything else from desired.
+	var got string
+	got = rsp.GetDesired().GetResources()["securityGroup"].GetResource().
+		GetFields()["metadata"].GetStructValue().
+		GetFields()["annotations"].GetStructValue().
+		GetFields()["crossplane.io/external-name"].GetStringValue()
+	s.Equal("some-external-name", got)
+
+	got = rsp.GetDesired().GetResources()["test-0-ipv4"].GetResource().
+		GetFields()["metadata"].GetStructValue().
+		GetFields()["annotations"].GetStructValue().
+		GetFields()["crossplane.io/external-name"].GetStringValue()
+	s.Equal("some-external-name", got)
+
+	got = rsp.GetDesired().GetResources()["test-1-ipv4"].GetResource().
+		GetFields()["metadata"].GetStructValue().
+		GetFields()["annotations"].GetStructValue().
+		GetFields()["crossplane.io/external-name"].GetStringValue()
+	s.Empty(got)
 }
 
 func (s *functionSuite) TestRunFunction_InvalidInput_ShouldFail() {
@@ -137,20 +277,8 @@ func (s *functionSuite) TestRunFunction_InvalidInput_ShouldFail() {
 		in   *v1beta1.Input
 	}{
 		{
-			name: "Input has no resource name",
-			in: &v1beta1.Input{
-				ResourceName: "",
-				TagFilters: []v1beta1.TagFilter{{
-					Key:      "foo",
-					Strategy: "value",
-					Value:    "bar",
-				}},
-			},
-		},
-		{
 			name: "Input has a tag filter with no key",
 			in: &v1beta1.Input{
-				ResourceName: "securitGroup",
 				TagFilters: []v1beta1.TagFilter{{
 					Key:      "",
 					Strategy: "value",
@@ -161,7 +289,6 @@ func (s *functionSuite) TestRunFunction_InvalidInput_ShouldFail() {
 		{
 			name: "Input has a tag filter using 'value' strategy, but didn't inform the value",
 			in: &v1beta1.Input{
-				ResourceName: "securitGroup",
 				TagFilters: []v1beta1.TagFilter{{
 					Key:      "foo",
 					Strategy: "value",
@@ -172,7 +299,6 @@ func (s *functionSuite) TestRunFunction_InvalidInput_ShouldFail() {
 		{
 			name: "Input has a tag filter using 'valuePath' strategy, but didn't inform the value path",
 			in: &v1beta1.Input{
-				ResourceName: "securitGroup",
 				TagFilters: []v1beta1.TagFilter{{
 					Key:       "foo",
 					Strategy:  "valuePath",
@@ -183,7 +309,6 @@ func (s *functionSuite) TestRunFunction_InvalidInput_ShouldFail() {
 		{
 			name: "Input has a tag filter with no strategy",
 			in: &v1beta1.Input{
-				ResourceName: "securitGroup",
 				TagFilters: []v1beta1.TagFilter{{
 					Key:       "foo",
 					Strategy:  "",
@@ -194,7 +319,6 @@ func (s *functionSuite) TestRunFunction_InvalidInput_ShouldFail() {
 		{
 			name: "Input uses an invalid strategy in a tag filter",
 			in: &v1beta1.Input{
-				ResourceName: "securitGroup",
 				TagFilters: []v1beta1.TagFilter{{
 					Key:       "foo",
 					Strategy:  "invalid",
@@ -214,7 +338,7 @@ func (s *functionSuite) TestRunFunction_InvalidInput_ShouldFail() {
 			s.NoError(err)
 
 			s.Len(rsp.Results, 1)
-			s.Equal(fnv1beta1.Severity_SEVERITY_FATAL, rsp.Results[0].Severity)
+			s.Equalf(fnv1beta1.Severity_SEVERITY_FATAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
 			s.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl)
 
 			s.Nil(rsp.Desired)
@@ -222,7 +346,23 @@ func (s *functionSuite) TestRunFunction_InvalidInput_ShouldFail() {
 	}
 }
 
-func (s *functionSuite) TestRunFunction_ExternalNameIsSetAlready_ShouldDoNothing() {
+func (s *functionSuite) TestRunFunction_NoDesiredComposedResources_ShouldDoNothing() {
+	req := s.req()
+	req.Desired.Resources = nil
+
+	fn := &Function{log: logging.NewNopLogger()}
+	rsp, err := fn.RunFunction(context.Background(), req)
+
+	s.NoError(err)
+
+	s.Len(rsp.Results, 1)
+	s.Equalf(fnv1beta1.Severity_SEVERITY_WARNING, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
+	s.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl)
+
+	s.Equal(req.Desired, rsp.Desired)
+}
+
+func (s *functionSuite) TestRunFunction_AllExternalNamesAreSetAlready_ShouldDoNothing() {
 	req := s.req()
 	req.Observed = &fnv1beta1.State{
 		Resources: map[string]*fnv1beta1.Resource{
@@ -234,7 +374,32 @@ func (s *functionSuite) TestRunFunction_ExternalNameIsSetAlready_ShouldDoNothing
 						"annotations": {
 							"crossplane.io/composition-resource-name": "securityGroup",
 							"crossplane.io/external-name": "sg-0ea154g1e2fd170bc"
-						}
+						},
+						"name": "test"
+					}
+				}`)},
+			"test-0-ipv4": {Resource: resource.MustStructJSON(`
+				{
+					"apiVersion": "ec2.aws.upbound.io/v1beta1",
+					"kind": "SecurityGroupIngressRule",
+					"metadata": {
+						"annotations": {
+							"crossplane.io/composition-resource-name": "test-0-ipv4",
+							"crossplane.io/external-name": "sgr-01feb4r2bgb6b4c58"
+						},
+						"name": "test-0-ipv4"
+					}
+				}`)},
+			"test-1-ipv4": {Resource: resource.MustStructJSON(`
+				{
+					"apiVersion": "ec2.aws.upbound.io/v1beta1",
+					"kind": "SecurityGroupIngressRule",
+					"metadata": {
+						"annotations": {
+							"crossplane.io/composition-resource-name": "test-1-ipv4",
+							"crossplane.io/external-name": "sgr-06ebk86u45405h434"
+						},
+						"name": "test-1-ipv4"
 					}
 				}`)},
 		},
@@ -246,10 +411,131 @@ func (s *functionSuite) TestRunFunction_ExternalNameIsSetAlready_ShouldDoNothing
 	s.NoError(err)
 
 	s.Len(rsp.Results, 1)
-	s.Equal(fnv1beta1.Severity_SEVERITY_NORMAL, rsp.Results[0].Severity)
+	s.Equalf(fnv1beta1.Severity_SEVERITY_NORMAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
 	s.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl)
 
 	s.Equal(req.Desired, rsp.Desired)
+}
+
+func (s *functionSuite) TestRunFunction_SomeExternalNamesAreSetAlready_ShouldSetOthers() {
+	client := &test.FakeGetResourcesAPIClient{
+		Resources: []types.ResourceTagMapping{
+			{
+				Tags: []types.Tag{
+					{
+						Key:   aws.String(externalNameTag),
+						Value: aws.String("some-external-name"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyName),
+						Value: aws.String("test"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyKind),
+						Value: aws.String("securitygroups.ec2.aws.upbound.io"),
+					},
+				},
+			},
+			{
+				Tags: []types.Tag{
+					{
+						Key:   aws.String(externalNameTag),
+						Value: aws.String("some-external-name"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyName),
+						Value: aws.String("test-0-ipv4"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyKind),
+						Value: aws.String("securitygroupingressrules.ec2.aws.upbound.io"),
+					},
+				},
+			},
+			{
+				Tags: []types.Tag{
+					{
+						Key:   aws.String(externalNameTag),
+						Value: aws.String("some-external-name"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyName),
+						Value: aws.String("test-1-ipv4"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyKind),
+						Value: aws.String("securitygroupingressrules.ec2.aws.upbound.io"),
+					},
+				},
+			},
+		},
+	}
+
+	req := s.req()
+	req.Observed = &fnv1beta1.State{
+		Resources: map[string]*fnv1beta1.Resource{
+			"securityGroup": {Resource: resource.MustStructJSON(`
+				{
+					"apiVersion": "ec2.test.upbound.io/v1beta1",
+					"kind": "SecurityGroup",
+					"metadata": {
+						"annotations": {
+							"crossplane.io/composition-resource-name": "securityGroup",
+							"crossplane.io/external-name": "sg-0ea154g1e2fd170bc"
+						},
+						"name": "test"
+					}
+				}`)},
+			"test-0-ipv4": {Resource: resource.MustStructJSON(`
+				{
+					"apiVersion": "ec2.test.upbound.io/v1beta1",
+					"kind": "SecurityGroupIngressRule",
+					"metadata": {
+						"annotations": {
+							"crossplane.io/composition-resource-name": "test-0-ipv4"
+						},
+						"name": "test-0-ipv4"
+					}
+				}`)},
+			"test-1-ipv4": {Resource: resource.MustStructJSON(`
+				{
+					"apiVersion": "ec2.test.upbound.io/v1beta1",
+					"kind": "SecurityGroupIngressRule",
+					"metadata": {
+						"annotations": {
+							"crossplane.io/composition-resource-name": "test-1-ipv4"
+						},
+						"name": "test-1-ipv4"
+					}
+				}`)},
+		},
+	}
+
+	fn := &Function{log: logging.NewNopLogger(), client: client}
+	rsp, err := fn.RunFunction(context.Background(), req)
+
+	s.NoError(err)
+
+	s.Len(rsp.Results, 1)
+	s.Equalf(fnv1beta1.Severity_SEVERITY_NORMAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
+	s.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl)
+
+	s.Equal(req.Desired.Resources["securityGroup"], rsp.Desired.Resources["securityGroup"])
+
+	// TODO(lcaparelli): find a better way to do this, preferably one that also checks
+	// we didn't change anything else from desired.
+	var got string
+	got = rsp.GetDesired().GetResources()["test-0-ipv4"].GetResource().
+		GetFields()["metadata"].GetStructValue().
+		GetFields()["annotations"].GetStructValue().
+		GetFields()["crossplane.io/external-name"].GetStringValue()
+	s.Equal("some-external-name", got)
+
+	got = rsp.GetDesired().GetResources()["test-1-ipv4"].GetResource().
+		GetFields()["metadata"].GetStructValue().
+		GetFields()["annotations"].GetStructValue().
+		GetFields()["crossplane.io/external-name"].GetStringValue()
+	s.Equal("some-external-name", got)
 }
 
 func (s *functionSuite) TestRunFunction_UnresolvableTagFilter_ShouldFail() {
@@ -265,21 +551,49 @@ func (s *functionSuite) TestRunFunction_UnresolvableTagFilter_ShouldFail() {
 	s.NoError(err)
 
 	s.Len(rsp.Results, 1)
-	s.Equal(fnv1beta1.Severity_SEVERITY_FATAL, rsp.Results[0].Severity)
+	s.Equalf(fnv1beta1.Severity_SEVERITY_FATAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
 	s.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl)
 
 	s.Equal(s.req().Desired, rsp.Desired)
 }
 
 func (s *functionSuite) TestRunFunction_MultipleTagFilterMatches_ShouldFail() {
-	client := &mockGetResourcesAPIClient{}
-	client.On("GetResources", mock.Anything, mock.Anything, mock.Anything).
-		Return(&resourcegroupstaggingapi.GetResourcesOutput{
-			ResourceTagMappingList: []types.ResourceTagMapping{
-				{ResourceARN: aws.String("resource1")},
-				{ResourceARN: aws.String("resource2")},
+	client := &test.FakeGetResourcesAPIClient{
+		Resources: []types.ResourceTagMapping{
+			{
+				Tags: []types.Tag{
+					{
+						Key:   aws.String(externalNameTag),
+						Value: aws.String("some-external-name"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyName),
+						Value: aws.String("test"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyKind),
+						Value: aws.String("securitygroups.ec2.aws.upbound.io"),
+					},
+				},
 			},
-		}, nil)
+			{
+				Tags: []types.Tag{
+					{
+						Key:   aws.String(externalNameTag),
+						Value: aws.String("another-external-name"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyName),
+						Value: aws.String("test"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyKind),
+						Value: aws.String("securitygroups.ec2.aws.upbound.io"),
+					},
+				},
+			},
+		},
+	}
 
 	fn := &Function{log: logging.NewNopLogger(), client: client}
 	rsp, err := fn.RunFunction(context.Background(), s.req())
@@ -287,16 +601,14 @@ func (s *functionSuite) TestRunFunction_MultipleTagFilterMatches_ShouldFail() {
 	s.NoError(err)
 
 	s.Len(rsp.Results, 1)
-	s.Equal(fnv1beta1.Severity_SEVERITY_FATAL, rsp.Results[0].Severity)
+	s.Equalf(fnv1beta1.Severity_SEVERITY_FATAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
 	s.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl)
 
 	s.Equal(s.req().Desired, rsp.Desired)
 }
 
 func (s *functionSuite) TestRunFunction_NoTagFilterMatches_ShouldDoNothing() {
-	client := &mockGetResourcesAPIClient{}
-	client.On("GetResources", mock.Anything, mock.Anything, mock.Anything).
-		Return(&resourcegroupstaggingapi.GetResourcesOutput{}, nil)
+	client := &test.FakeGetResourcesAPIClient{}
 
 	fn := &Function{log: logging.NewNopLogger(), client: client}
 	rsp, err := fn.RunFunction(context.Background(), s.req())
@@ -304,26 +616,53 @@ func (s *functionSuite) TestRunFunction_NoTagFilterMatches_ShouldDoNothing() {
 	s.NoError(err)
 
 	s.Len(rsp.Results, 1)
-	s.Equal(fnv1beta1.Severity_SEVERITY_NORMAL, rsp.Results[0].Severity)
+	s.Equalf(fnv1beta1.Severity_SEVERITY_NORMAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
 	s.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl)
 
 	s.Equal(s.req().Desired, rsp.Desired)
 }
 
 func (s *functionSuite) TestRunFunction_FilterMatchesButResourceHasNoExternalNameTag_ShouldFail() {
-	client := &mockGetResourcesAPIClient{}
-	client.On("GetResources", mock.Anything, mock.Anything, mock.Anything).
-		Return(&resourcegroupstaggingapi.GetResourcesOutput{
-			ResourceTagMappingList: []types.ResourceTagMapping{
-				{
-					ResourceARN: aws.String("resource1"),
-					Tags: []types.Tag{{
-						Key:   aws.String("key"),
-						Value: aws.String("value"),
-					}},
+	client := &test.FakeGetResourcesAPIClient{
+		Resources: []types.ResourceTagMapping{
+			{
+				Tags: []types.Tag{
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyName),
+						Value: aws.String("test"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyKind),
+						Value: aws.String("securitygroups.ec2.aws.upbound.io"),
+					},
 				},
 			},
-		}, nil)
+			{
+				Tags: []types.Tag{
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyName),
+						Value: aws.String("test-0-ipv4"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyKind),
+						Value: aws.String("securitygroupingressrules.ec2.aws.upbound.io"),
+					},
+				},
+			},
+			{
+				Tags: []types.Tag{
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyName),
+						Value: aws.String("test-1-ipv4"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyKind),
+						Value: aws.String("securitygroupingressrules.ec2.aws.upbound.io"),
+					},
+				},
+			},
+		},
+	}
 
 	fn := &Function{log: logging.NewNopLogger(), client: client}
 	rsp, err := fn.RunFunction(context.Background(), s.req())
@@ -331,7 +670,7 @@ func (s *functionSuite) TestRunFunction_FilterMatchesButResourceHasNoExternalNam
 	s.NoError(err)
 
 	s.Len(rsp.Results, 1)
-	s.Equal(fnv1beta1.Severity_SEVERITY_FATAL, rsp.Results[0].Severity)
+	s.Equalf(fnv1beta1.Severity_SEVERITY_FATAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
 	s.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl)
 
 	s.Equal(s.req().Desired, rsp.Desired)

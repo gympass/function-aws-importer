@@ -3,13 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi"
 	"github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi/types"
 	"github.com/crossplane/crossplane-runtime/pkg/errors"
-	"github.com/crossplane/crossplane-runtime/pkg/fieldpath"
 	runtimeresource "github.com/crossplane/crossplane-runtime/pkg/resource"
 	"github.com/crossplane/function-sdk-go/logging"
 	fnv1beta1 "github.com/crossplane/function-sdk-go/proto/v1beta1"
@@ -18,11 +16,11 @@ import (
 	"github.com/crossplane/function-sdk-go/response"
 
 	"github.com/gympass/function-aws-importer/input/v1beta1"
+	"github.com/gympass/function-aws-importer/internal"
 )
 
 const (
-	externalNameAnnotationPath = `metadata.annotations["crossplane.io/external-name"]`
-	externalNameTag            = "crossplane.io/external-name"
+	externalNameTag = "crossplane-external-name"
 )
 
 // Function returns whatever response you ask it to.
@@ -58,148 +56,119 @@ func (f *Function) RunFunction(ctx context.Context, req *fnv1beta1.RunFunctionRe
 		return rsp, nil
 	}
 
-	observedMRs, err := request.GetObservedComposedResources(req)
+	resources, err := internal.NewResources(req)
 	if err != nil {
-		f.log.Info("Failed to get observed composed resources.",
+		f.log.Info("Failed to get observed and desired composed resources.",
 			"error", err,
 		)
-		response.Fatal(rsp, errors.Wrapf(err, "cannot get observed composed resources in %T", rsp))
+		response.Fatal(rsp, fmt.Errorf("cannot get observed and desired composed resources: %v", err))
 		return rsp, nil
 	}
 
-	observedMR, ok := observedMRs[in.ResourceName]
-	if ok {
-		externalName, err := observedMR.Resource.GetString(externalNameAnnotationPath)
-		if err == nil {
-			f.log.Debug("External name already set",
-				"externalName", externalName,
-				"resourceName", in.ResourceName,
-			)
-			response.Normalf(rsp, "external name annotation for %q is already set to %q", in.ResourceName, externalName)
-			return rsp, nil
-		}
-		if ignoreNotFound(err) != nil {
-			f.log.Info("Failed to get external name annotation from composed resource.",
-				"error", err,
-				"resourceName", in.ResourceName,
-			)
-			response.Fatal(rsp, errors.Wrapf(err, "cannot get external name annotation from composed resource %q", in.ResourceName))
-			return rsp, nil
-		}
-	}
-	xr, err := request.GetObservedCompositeResource(req)
-	if err != nil {
-		f.log.Info("Failed to get observed XR from req.",
-			"error", err,
-		)
-		response.Fatal(rsp, errors.Wrapf(err, "cannot get observed XR from req"))
+	if resources.LenDesired() == 0 {
+		f.log.Info("Empty desired composed resources")
+		response.Warning(rsp, errors.New("found no desired composed resources. Are you running the function before other steps that define the resources? It should always run after them."))
 		return rsp, nil
 	}
 
-	desiredMRs, err := request.GetDesiredComposedResources(req)
-	if err != nil {
-		f.log.Info("Failed to get observed Composted Resources from req.",
-			"error", err,
+	if resources.LenObserved() > 0 && resources.AllHaveExternalNamesSet() {
+		externalNames := resources.ObservedExternalNames()
+		f.log.Debug("External name already set for all resources",
+			"externalNames", externalNames,
 		)
-		response.Fatal(rsp, errors.Wrap(err, "cannot get observed MRs from req"))
+		response.Normalf(rsp, "external name annotation already set for all resources: %v", externalNames)
 		return rsp, nil
 	}
 
-	desiredComposed, ok := desiredMRs[in.ResourceName]
-	if !ok {
-		f.log.Info("Failed to get desired Composed Resource from req.",
-			"error", err,
-			"resourceName", in.ResourceName,
-		)
-		response.Fatal(rsp, fmt.Errorf("cannot get desired MR %q from req", in.ResourceName))
-		return rsp, nil
-
-	}
-
-	tagFilters, err := resolveTagFilters(in, xr, desiredComposed)
-	if err != nil {
-		f.log.Info("Failed to resolve tag filters.",
-			"error", err,
-			"tagFilters", in.TagFilters,
-			"xr", xr,
-			"managedResource", desiredComposed,
-		)
-		response.Fatal(rsp, errors.Wrapf(err, "cannot resolve tag filters"))
-		return rsp, nil
-	}
-
-	paginator := resourcegroupstaggingapi.NewGetResourcesPaginator(f.client, &resourcegroupstaggingapi.GetResourcesInput{
-		TagFilters: tagFilters,
-	})
-
-	var tagMappings []types.ResourceTagMapping
-	for paginator.HasMorePages() {
-		page, err := paginator.NextPage(context.Background())
+	err = resources.ForEachDesiredComposed(func(desiredComposed internal.Resource) error {
+		xr, err := request.GetObservedCompositeResource(req)
 		if err != nil {
-			f.log.Info("Failed to paginate resource tag mappings.",
+			return fmt.Errorf("extracting observed XR from req: %v", err)
+		}
+
+		tagFilters, err := resolveTagFilters(in, xr, desiredComposed)
+		if err != nil {
+			f.log.Info("Failed to resolve tag filters.",
 				"error", err,
+				"tagFilters", in.TagFilters,
+				"xr", xr,
+				"managedResource", desiredComposed,
 			)
-			response.Fatal(rsp, errors.Wrapf(err, "cannot get resources tag mappings"))
-			return rsp, nil
+			return fmt.Errorf("resolving tag filters: %v", err)
 		}
 
-		for _, t := range page.ResourceTagMappingList {
-			tagMappings = append(tagMappings, t)
-		}
-	}
+		paginator := resourcegroupstaggingapi.NewGetResourcesPaginator(f.client, &resourcegroupstaggingapi.GetResourcesInput{
+			TagFilters: tagFilters,
+		})
 
-	if len(tagMappings) > 1 {
-		f.log.Info("Ambiguous tag filters.", // TODO(lcaparelli): better word than ambiguous, maybe better message overall
-			"error", errors.New("found more than one resource matching tag filters"),
+		var tagMappings []types.ResourceTagMapping
+		for paginator.HasMorePages() {
+			page, err := paginator.NextPage(context.Background())
+			if err != nil {
+				return fmt.Errorf("getting resources tag mappings: %v", err)
+			}
+
+			for _, t := range page.ResourceTagMappingList {
+				tagMappings = append(tagMappings, t)
+			}
+		}
+
+		if len(tagMappings) > 1 {
+			f.log.Info("Cannot decide which resource to import.",
+				"error", errors.New("found more than one resource matching tag filters"),
+				"tagFilters", tagFilters,
+				"matchingResources", extractARNs(tagMappings),
+			)
+			return fmt.Errorf("found more than one resource matching tag filters: %v", extractARNs(tagMappings))
+		}
+
+		if len(tagMappings) == 0 {
+			f.log.Debug("External resource not found",
+				"tagFilters", tagFilters,
+			)
+			return nil
+		}
+
+		tags := tagMappings[0].Tags
+		f.log.Debug("Found resource with matching tags",
+			"tags", tags,
 			"tagFilters", tagFilters,
-			"matchingResources", extractARNs(tagMappings),
 		)
-		response.Fatal(rsp, fmt.Errorf("found more than one resource matching tag filters: %v", extractARNs(tagMappings)))
-		return rsp, nil
-	}
 
-	if len(tagMappings) == 0 {
-		f.log.Debug("External resource not found",
-			"tagFilters", tagFilters,
-		)
-		response.Normalf(rsp, "external resource (%q) not found", in.ResourceName)
-		return rsp, nil
-	}
-
-	tags := tagMappings[0].Tags
-	f.log.Debug("Found resource with matching tags",
-		"tags", tags,
-		"tagFilters", tagFilters,
-	)
-
-	var externalName string
-	for _, t := range tags {
-		// TODO(lcaparelli): make this a parameter for the function, allow users to fetch external-name value from any tag
-		if aws.ToString(t.Key) == externalNameTag {
-			externalName = aws.ToString(t.Value)
-			break
+		var externalName string
+		for _, t := range tags {
+			// TODO(lcaparelli): make this a parameter for the function, allow users to fetch external-name value from any tag
+			if aws.ToString(t.Key) == externalNameTag {
+				externalName = aws.ToString(t.Value)
+				break
+			}
 		}
-	}
 
-	if len(externalName) == 0 {
-		f.log.Info("Cannnot fetch external name from tags.",
-			"error", errors.New("tag does not exist or is empty"),
-			"existingTags", tags,
-			"externalNameTagKey", externalNameTag,
-		)
-		response.Fatal(rsp, fmt.Errorf("found resource matching tag filters, but %q tag is not present or is empty", externalNameTag))
-		return rsp, nil
-	}
+		if len(externalName) == 0 {
+			f.log.Info("Cannot fetch external name from tags.",
+				"error", errors.New("tag does not exist or is empty"),
+				"existingTags", tags,
+				"externalNameTagKey", externalNameTag,
+			)
+			return fmt.Errorf("found resource matching tag filters, but %q tag is not present or is empty", externalNameTag)
+		}
 
-	err = desiredMRs[in.ResourceName].Resource.SetString(externalNameAnnotationPath, externalName)
+		return resources.SetDesiredExternalName(desiredComposed.CompositionName(), externalName)
+	})
 	if err != nil {
-		f.log.Info("Failed to set external-name on desired composed resource.",
+		f.log.Info("Failed to reconcile desired managed resource.",
 			"error", err,
 		)
-		response.Fatal(rsp, errors.Wrapf(err, "cannot set external-name on desired composed resource"))
+		response.Fatal(rsp, fmt.Errorf("cannot reconcile desired managed resource: %v", err))
 		return rsp, nil
 	}
 
+	if !resources.FoundExistingResources() {
+		response.Normalf(rsp, "external resources not found: %v", resources.DesiredResourcesCompositionNames())
+		return rsp, nil
+	}
+
+	desiredMRs := resources.DesiredComposedResources()
 	if err := response.SetDesiredComposedResources(rsp, desiredMRs); err != nil {
 		f.log.Info("Failed to set desired composed resources.",
 			"error", err,
@@ -209,41 +178,35 @@ func (f *Function) RunFunction(ctx context.Context, req *fnv1beta1.RunFunctionRe
 		return rsp, nil
 	}
 
-	response.Normalf(rsp, "added external name annotation to %q with value %q", in.ResourceName, externalName)
+	desiredExternalNames := resources.DesiredExternalNames()
+	response.Normalf(rsp, "added external name annotations: %v", desiredExternalNames)
 	f.log.Info("Added external name annotation.",
-		"externalName", externalName,
+		"externalNames", desiredExternalNames,
 	)
 
 	return rsp, nil
 }
 
-func resolveTagFilters(in *v1beta1.Input, xr *resource.Composite, mr *resource.DesiredComposed) ([]types.TagFilter, error) {
+func resolveTagFilters(in *v1beta1.Input, xr *resource.Composite, res internal.Resource) ([]types.TagFilter, error) {
 	additionalFilters, err := in.ResolveTagFilters(xr)
 	if err != nil {
 		return nil, fmt.Errorf("resolving input tag filters: %v", err)
 	}
 
-	return append(additionalFilters, nameAndKindFilters(mr)...), nil
+	return append(additionalFilters, nameAndKindFilters(res)...), nil
 }
 
-func nameAndKindFilters(mr *resource.DesiredComposed) []types.TagFilter {
+func nameAndKindFilters(res internal.Resource) []types.TagFilter {
 	return []types.TagFilter{
 		{
 			Key:    aws.String(runtimeresource.ExternalResourceTagKeyName),
-			Values: []string{mr.Resource.GetName()},
+			Values: []string{res.K8sName()},
 		},
 		{
 			Key:    aws.String(runtimeresource.ExternalResourceTagKeyKind),
-			Values: []string{strings.ToLower(mr.Resource.GroupVersionKind().GroupKind().String())},
+			Values: []string{res.GroupKind()},
 		},
 	}
-}
-
-func ignoreNotFound(err error) error {
-	if fieldpath.IsNotFound(err) {
-		return nil
-	}
-	return err
 }
 
 func extractARNs(tagMappings []types.ResourceTagMapping) []string {

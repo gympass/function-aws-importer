@@ -60,7 +60,7 @@ spec:
           toFieldPath: status.externalName
         - type: FromCompositeFieldPath
           fromFieldPath: status.externalName
-          toFieldPath: spec.forProvider.tags[crossplane.io/external-name]
+          toFieldPath: spec.forProvider.tags[crossplane-external-name]
 
   - step: ensure-ipv4-ingress-rules
     functionRef:
@@ -104,11 +104,9 @@ spec:
           ---
           [[- end ]]
           [[- end ]]
-  - step: import-sg-if-exists
+  - step: import-resources-if-exist
     functionRef:
       name: function-aws-importer
-    input:
-      resourceName: securityGroup
   - step: automatically-detect-ready-composed-resources
     functionRef:
       name: function-auto-ready
