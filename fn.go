@@ -114,7 +114,7 @@ func (f *Function) RunFunction(ctx context.Context, req *fnv1beta1.RunFunctionRe
 		}
 
 		if len(tagMappings) > 1 {
-			f.log.Info("Ambiguous tag filters.", // TODO(lcaparelli): better word than ambiguous, maybe better message overall
+			f.log.Info("Cannot decide which resource to import.",
 				"error", errors.New("found more than one resource matching tag filters"),
 				"tagFilters", tagFilters,
 				"matchingResources", extractARNs(tagMappings),
