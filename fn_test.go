@@ -346,6 +346,22 @@ func (s *functionSuite) TestRunFunction_InvalidInput_ShouldFail() {
 	}
 }
 
+func (s *functionSuite) TestRunFunction_NoDesiredComposedResources_ShouldDoNothing() {
+	req := s.req()
+	req.Desired.Resources = nil
+
+	fn := &Function{log: logging.NewNopLogger()}
+	rsp, err := fn.RunFunction(context.Background(), req)
+
+	s.NoError(err)
+
+	s.Len(rsp.Results, 1)
+	s.Equalf(fnv1beta1.Severity_SEVERITY_WARNING, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
+	s.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl)
+
+	s.Equal(req.Desired, rsp.Desired)
+}
+
 func (s *functionSuite) TestRunFunction_AllExternalNamesAreSetAlready_ShouldDoNothing() {
 	req := s.req()
 	req.Observed = &fnv1beta1.State{

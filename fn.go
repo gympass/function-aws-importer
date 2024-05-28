@@ -65,7 +65,11 @@ func (f *Function) RunFunction(ctx context.Context, req *fnv1beta1.RunFunctionRe
 		return rsp, nil
 	}
 
-	// TODO(lcarelli): handle early return when desired is empty. If you spot this on review, please mention it.
+	if resources.LenDesired() == 0 {
+		f.log.Info("Empty desired composed resources")
+		response.Warning(rsp, errors.New("found no desired composed resources. Are you running the function before other steps that define the resources? It should always run after them."))
+		return rsp, nil
+	}
 
 	if resources.LenObserved() > 0 && resources.AllHaveExternalNamesSet() {
 		externalNames := resources.ObservedExternalNames()

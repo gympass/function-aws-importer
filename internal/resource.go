@@ -69,7 +69,12 @@ func (r Resources) ObservedExternalNames() map[string]string {
 	return names
 }
 
-// LenObserved returns the length of the observed composed resources
+// LenDesired returns how many desired composed resources there are
+func (r Resources) LenDesired() int {
+	return len(r.desiredComposed)
+}
+
+// LenObserved returns how many observed composed resources there are
 func (r Resources) LenObserved() int {
 	return len(r.observedComposed)
 }
