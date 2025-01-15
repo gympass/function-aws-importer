@@ -101,6 +101,10 @@ func (r Resources) DesiredResourcesCompositionNames() []string {
 
 // SetDesiredExternalName sets the external name annotation to the desired composed resource matching the given composedName argument
 func (r Resources) SetDesiredExternalName(composedName string, name string) error {
+	if name == "" {
+		return nil
+	}
+
 	res, ok := r.desiredComposed[composedName]
 	if !ok {
 		return fmt.Errorf("composed name %q not found", composedName)

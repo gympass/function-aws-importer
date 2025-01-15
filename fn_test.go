@@ -5,7 +5,9 @@ import (
 	"testing"
 
 	fnv1 "github.com/crossplane/function-sdk-go/proto/v1"
+	"github.com/google/go-cmp/cmp"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/testing/protocmp"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi/types"
@@ -879,9 +881,9 @@ func (s *functionSuite) TestRunFunction_NoTagFilterMatches_ShouldDoNothing() {
 	s.Len(rsp.Results, 2)
 	s.Equalf(fnv1.Severity_SEVERITY_NORMAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
 	s.Equalf(fnv1.Severity_SEVERITY_NORMAL, rsp.Results[1].Severity, "msg: %s", rsp.Results[0].GetMessage())
-	s.True(proto.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl))
+	s.Truef(proto.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl), "diff: %s", cmp.Diff(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl, protocmp.Transform()))
 
-	s.True(proto.Equal(s.req().Desired, rsp.Desired))
+	s.Truef(proto.Equal(s.req().Desired, rsp.Desired), "diff: %s", cmp.Diff(s.req().Desired, rsp.Desired, protocmp.Transform()))
 }
 
 func (s *functionSuite) TestRunFunction_FilterMatchesButResourceHasNoExternalNameTag_ShouldFail() {
