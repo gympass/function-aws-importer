@@ -6,27 +6,18 @@ is non-deterministic, like in EC2 Security Groups, Route53 Hosted Zones, etc.
 It filters resources from AWS using the 
 [Resource Groups Tagging API ](https://docs.aws.amazon.com/resourcegroupstagging/latest/APIReference/overview.html) based
 on tags Crossplane inserts automatically (`crossplane-name` and `crossplane-kind`), then gets the external-name value from
-one the resource's tags, specifically `crossplane-external-name`.
+one the resource's tags, specifically `crossplane-external-name`. This tag is populated automatically by the function
+based on the composed resource's "crossplane.io/external-name" annotation, if it exists (which should be true once the 
+resource is first created).
 
-Its main goal is to avoid errors or duplication of resources on AWS when a Managed Resource is deleted by mistake, or in 
-catastrophic events that lead to the recreation of Kubernetes clusters while the external resources still exist on AWS.
+The function never sets any value to the "crossplane.io/external-name" annotation if it's already present. The annotation
+continues to be the single source of truth for the external-name, and information always flows from it to tags if it's already
+present.
+
+The function's main goal is to avoid errors or duplication of resources on AWS when a Managed Resource is deleted by mistake,
+or in catastrophic events that lead to the recreation of Kubernetes clusters while the external resources still exist on AWS.
 
 ## Usage
-
-Your composition must guarantee that external-name tag exists and has a valid value. This can be achieved with a patch
-similar to this:
-
-```yaml
-- type: ToCompositeFieldPath
-  fromFieldPath: metadata.annotations[crossplane.io/external-name]
-  toFieldPath: status.externalName
-- type: FromCompositeFieldPath
-  fromFieldPath: status.externalName
-  toFieldPath: spec.forProvider.tags[crossplane-external-name]
-```
-
-When the resource is first created, Crossplane will set the annotation automatically, and the next time the composition
-is rendered, these patches will run and ensure the tag is present, with the value that's set in the annotation.
 
 You can use the function by inserting a pipeline step that runs after you define the Managed Resources you want to ensure
 importing happens for:
@@ -64,16 +55,15 @@ spec:
                 # etc
                 # etc
         patches:
-        - type: ToCompositeFieldPath
-          fromFieldPath: metadata.annotations[crossplane.io/external-name]
-          toFieldPath: status.externalName
-        - type: FromCompositeFieldPath
-          fromFieldPath: status.externalName
-          toFieldPath: spec.forProvider.tags[crossplane-external-name]
+          # etc
+          # etc
    - step: import-sg-if-exists
      functionRef:
         name: function-aws-importer
 ```
+
+The composed resources must support tagging via `.spec.forProvider.tags`. The function patches this field in composed
+resources when rendering the composition with the value from the "crossplane.io/external-name" annotation.
 
 ## Development
 
@@ -102,6 +92,4 @@ FUNCTION_REGISTRY=my.cool.oci.registry make build-and-push-dev
 ```
 
 ## Known Issues
-- the patch to copy the external name from the MR to the XR, then back from the XR into the MR's tags may cause full 
-reconciliation to take more round-trips until everything is as it should.
-- the need to ensure the tag is set by the composition makes this function not self-contained. We aim to improve this in the future.
+N/A

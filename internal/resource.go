@@ -146,6 +146,28 @@ func (r Resources) DesiredExternalNames() map[string]string {
 	return names
 }
 
+// EnsureExternalNameTags copies over values from the external-name annotation in observed resources to desired resources'
+// .spec.forProvider.tag if the desired resource supports it.
+func (r Resources) EnsureExternalNameTags(externalNameTag string) error {
+	for k, obs := range r.observedComposed {
+		if len(obs.externalName) == 0 || !taggableGroupKinds[obs.GroupKind()] {
+			continue
+		}
+
+		des, ok := r.desiredComposed[k]
+		if !ok {
+			continue
+		}
+
+		err := des.desiredComposed.Resource.SetString("spec.forProvider.tags."+externalNameTag, obs.externalName)
+		if err != nil {
+			return fmt.Errorf("setting .spec.forProvider.tags on %s: %v", des.compositionName, err)
+		}
+	}
+
+	return nil
+}
+
 // Resource represents a single managed resource, be it observed or desired
 type Resource struct {
 	// TODO(lcaparelli): externalName is only used for observed. desiredComposed only for desired.

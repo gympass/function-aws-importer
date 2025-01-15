@@ -71,7 +71,26 @@ func (f *Function) RunFunction(ctx context.Context, req *fnv1.RunFunctionRequest
 		return rsp, nil
 	}
 
+	err = resources.EnsureExternalNameTags(externalNameTag)
+	if err != nil {
+		f.log.Info("Failed to ensure external name tags.",
+			"error", err,
+		)
+		response.Fatal(rsp, fmt.Errorf("cannot ensure external name tags: %v", err))
+		return rsp, nil
+	}
+
 	if resources.LenObserved() > 0 && resources.AllHaveExternalNamesSet() {
+		err := response.SetDesiredComposedResources(rsp, resources.DesiredComposedResources())
+		if err != nil {
+			f.log.Info("Failed to set desired composed resources.",
+				"error", err,
+				"desired", resources.DesiredComposedResources(),
+			)
+			response.Fatal(rsp, errors.Wrapf(err, "cannot set desired composed resources in %T", rsp))
+			return rsp, nil
+		}
+
 		externalNames := resources.ObservedExternalNames()
 		f.log.Debug("External name already set for all resources",
 			"externalNames", externalNames,

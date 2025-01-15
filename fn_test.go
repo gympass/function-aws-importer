@@ -4,11 +4,13 @@ import (
 	"context"
 	"testing"
 
+	fnv1 "github.com/crossplane/function-sdk-go/proto/v1"
+	"google.golang.org/protobuf/proto"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi/types"
 	"github.com/crossplane/crossplane-runtime/pkg/logging"
 	runtimeresource "github.com/crossplane/crossplane-runtime/pkg/resource"
-	fnv1beta1 "github.com/crossplane/function-sdk-go/proto/v1beta1"
 	"github.com/crossplane/function-sdk-go/resource"
 	"github.com/crossplane/function-sdk-go/response"
 	"github.com/stretchr/testify/suite"
@@ -30,11 +32,11 @@ type functionSuite struct {
 // We're using an SG for the tests, it could be any AWS managed resource with tags.
 // We're using a specific MR instead of inserting a bunch of 'foos' and 'bars' to make
 // the tests bear some resemblance of a real use-case.
-func (s *functionSuite) req() *fnv1beta1.RunFunctionRequest {
-	return &fnv1beta1.RunFunctionRequest{
+func (s *functionSuite) req() *fnv1.RunFunctionRequest {
+	return &fnv1.RunFunctionRequest{
 		Input: resource.MustStructObject(s.in),
-		Desired: &fnv1beta1.State{
-			Resources: map[string]*fnv1beta1.Resource{
+		Desired: &fnv1.State{
+			Resources: map[string]*fnv1.Resource{
 				"securityGroup": {Resource: resource.MustStructJSON(`
 					{
 						"apiVersion": "ec2.aws.upbound.io/v1beta1",
@@ -88,6 +90,175 @@ func (s *functionSuite) req() *fnv1beta1.RunFunctionRequest {
 						"kind": "SecurityGroupIngressRule",
 						"metadata": {
 							"name": "test-1-ipv4"
+						},
+						"spec": {
+							"deletionPolicy": "Orphan",
+							"forProvider": {
+								"cidrIpv4": "192.2.0.0/16",
+								"description": "grant ingress on port 5432/TCP",
+								"fromPort": 5432,
+								"ipProtocol": "tcp",
+								"region": "us-east-1",
+								"securityGroupIdRef": {
+									"name": "test",
+									"policy": {
+										"resolution": "Required",
+										"resolve": "Always"
+									}
+								},
+								"toPort": 5432
+							}
+						}
+					}`)},
+			},
+		},
+	}
+}
+
+func (s *functionSuite) reqWithObservedExternalName(externalName string) *fnv1.RunFunctionRequest {
+	return &fnv1.RunFunctionRequest{
+		Input: resource.MustStructObject(s.in),
+		Desired: &fnv1.State{
+			Resources: map[string]*fnv1.Resource{
+				"securityGroup": {Resource: resource.MustStructJSON(`
+					{
+						"apiVersion": "ec2.aws.upbound.io/v1beta1",
+						"kind": "SecurityGroup",
+						"metadata": {
+							"name": "test"
+						},
+						"spec": {
+							"deletionPolicy": "Orphan",
+							"forProvider": {
+								"description": "foo-bar",
+								"name": "test",
+								"region": "us-east-1",
+								"revokeRulesOnDelete": true,
+								"tags": {
+									"Name": "test"
+								},
+								"vpcId": "some-vpc-id"
+							}
+						}
+					}`)},
+				"test-0-ipv4": {Resource: resource.MustStructJSON(`
+					{
+						"apiVersion": "ec2.aws.upbound.io/v1beta1",
+						"kind": "SecurityGroupIngressRule",
+						"metadata": {
+							"name": "test-0-ipv4"
+						},
+						"spec": {
+							"deletionPolicy": "Orphan",
+							"forProvider": {
+								"cidrIpv4": "192.1.0.0/16",
+								"description": "grant ingress on port 5432/TCP",
+								"fromPort": 5432,
+								"ipProtocol": "tcp",
+								"region": "us-east-1",
+								"securityGroupIdRef": {
+									"name": "test",
+									"policy": {
+										"resolution": "Required",
+										"resolve": "Always"
+									}
+								},
+								"toPort": 5432
+							}
+						}
+					}`)},
+				"test-1-ipv4": {Resource: resource.MustStructJSON(`
+					{
+						"apiVersion": "ec2.aws.upbound.io/v1beta1",
+						"kind": "SecurityGroupIngressRule",
+						"metadata": {
+							"name": "test-1-ipv4"
+						},
+						"spec": {
+							"deletionPolicy": "Orphan",
+							"forProvider": {
+								"cidrIpv4": "192.2.0.0/16",
+								"description": "grant ingress on port 5432/TCP",
+								"fromPort": 5432,
+								"ipProtocol": "tcp",
+								"region": "us-east-1",
+								"securityGroupIdRef": {
+									"name": "test",
+									"policy": {
+										"resolution": "Required",
+										"resolve": "Always"
+									}
+								},
+								"toPort": 5432
+							}
+						}
+					}`)},
+			},
+		},
+		Observed: &fnv1.State{
+			Resources: map[string]*fnv1.Resource{
+				"securityGroup": {Resource: resource.MustStructJSON(`
+					{
+						"apiVersion": "ec2.aws.upbound.io/v1beta1",
+						"kind": "SecurityGroup",
+						"metadata": {
+							"name": "test",
+							"annotations": {
+								"crossplane.io/external-name": "` + externalName + `"
+							}
+						},
+						"spec": {
+							"deletionPolicy": "Orphan",
+							"forProvider": {
+								"description": "foo-bar",
+								"name": "test",
+								"region": "us-east-1",
+								"revokeRulesOnDelete": true,
+								"tags": {
+									"Name": "test"
+								},
+								"vpcId": "some-vpc-id"
+							}
+						}
+					}`)},
+				"test-0-ipv4": {Resource: resource.MustStructJSON(`
+					{
+						"apiVersion": "ec2.aws.upbound.io/v1beta1",
+						"kind": "SecurityGroupIngressRule",
+						"metadata": {
+							"name": "test-0-ipv4",
+							"annotations": {
+								"crossplane.io/external-name": "` + externalName + `"
+							}
+						},
+						"spec": {
+							"deletionPolicy": "Orphan",
+							"forProvider": {
+								"cidrIpv4": "192.1.0.0/16",
+								"description": "grant ingress on port 5432/TCP",
+								"fromPort": 5432,
+								"ipProtocol": "tcp",
+								"region": "us-east-1",
+								"securityGroupIdRef": {
+									"name": "test",
+									"policy": {
+										"resolution": "Required",
+										"resolve": "Always"
+									}
+								},
+								"toPort": 5432
+							}
+						}
+					}`)},
+				"test-1-ipv4": {Resource: resource.MustStructJSON(`
+					{
+						"apiVersion": "ec2.aws.upbound.io/v1beta1",
+						"kind": "SecurityGroupIngressRule",
+						"metadata": {
+							"name": "test-1-ipv4",
+							"annotations": {
+								"crossplane.io/external-name": "` + externalName + `"
+							}
 						},
 						"spec": {
 							"deletionPolicy": "Orphan",
@@ -177,7 +348,7 @@ func (s *functionSuite) TestRunFunction_AllResourcesExist_ShouldSetExternalNameA
 	s.NoError(err)
 
 	s.Len(rsp.Results, 1)
-	s.Equalf(fnv1beta1.Severity_SEVERITY_NORMAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
+	s.Equalf(fnv1.Severity_SEVERITY_NORMAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
 	s.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl)
 
 	// TODO(lcaparelli): find a better way to do this, preferably one that also checks
@@ -246,7 +417,7 @@ func (s *functionSuite) TestRunFunction_SomeResourcesExist_ShouldSetExternalName
 	s.NoError(err)
 
 	s.Len(rsp.Results, 1)
-	s.Equalf(fnv1beta1.Severity_SEVERITY_NORMAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
+	s.Equalf(fnv1.Severity_SEVERITY_NORMAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
 	s.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl)
 
 	// TODO(lcaparelli): find a better way to do this, preferably one that also checks
@@ -330,7 +501,7 @@ func (s *functionSuite) TestRunFunction_InvalidInput_ShouldFail() {
 
 	for _, tc := range testCases {
 		s.Run(tc.name, func() {
-			req := &fnv1beta1.RunFunctionRequest{Input: resource.MustStructObject(tc.in)}
+			req := &fnv1.RunFunctionRequest{Input: resource.MustStructObject(tc.in)}
 
 			fn := &Function{log: logging.NewNopLogger()}
 			rsp, err := fn.RunFunction(context.Background(), req)
@@ -338,7 +509,7 @@ func (s *functionSuite) TestRunFunction_InvalidInput_ShouldFail() {
 			s.NoError(err)
 
 			s.Len(rsp.Results, 1)
-			s.Equalf(fnv1beta1.Severity_SEVERITY_FATAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
+			s.Equalf(fnv1.Severity_SEVERITY_FATAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
 			s.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl)
 
 			s.Nil(rsp.Desired)
@@ -356,16 +527,16 @@ func (s *functionSuite) TestRunFunction_NoDesiredComposedResources_ShouldDoNothi
 	s.NoError(err)
 
 	s.Len(rsp.Results, 1)
-	s.Equalf(fnv1beta1.Severity_SEVERITY_WARNING, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
+	s.Equalf(fnv1.Severity_SEVERITY_WARNING, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
 	s.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl)
 
 	s.Equal(req.Desired, rsp.Desired)
 }
 
-func (s *functionSuite) TestRunFunction_AllExternalNamesAreSetAlready_ShouldDoNothing() {
+func (s *functionSuite) TestRunFunction_AllExternalNamesAreSetAlready_ShouldEnsureAllExternalNameTagsAreSet() {
 	req := s.req()
-	req.Observed = &fnv1beta1.State{
-		Resources: map[string]*fnv1beta1.Resource{
+	req.Observed = &fnv1.State{
+		Resources: map[string]*fnv1.Resource{
 			"securityGroup": {Resource: resource.MustStructJSON(`
 				{
 					"apiVersion": "ec2.aws.upbound.io/v1beta1",
@@ -373,7 +544,7 @@ func (s *functionSuite) TestRunFunction_AllExternalNamesAreSetAlready_ShouldDoNo
 					"metadata": {
 						"annotations": {
 							"crossplane.io/composition-resource-name": "securityGroup",
-							"crossplane.io/external-name": "sg-0ea154g1e2fd170bc"
+							"crossplane.io/external-name": "some-external-name"
 						},
 						"name": "test"
 					}
@@ -385,7 +556,7 @@ func (s *functionSuite) TestRunFunction_AllExternalNamesAreSetAlready_ShouldDoNo
 					"metadata": {
 						"annotations": {
 							"crossplane.io/composition-resource-name": "test-0-ipv4",
-							"crossplane.io/external-name": "sgr-01feb4r2bgb6b4c58"
+							"crossplane.io/external-name": "some-external-name"
 						},
 						"name": "test-0-ipv4"
 					}
@@ -397,7 +568,7 @@ func (s *functionSuite) TestRunFunction_AllExternalNamesAreSetAlready_ShouldDoNo
 					"metadata": {
 						"annotations": {
 							"crossplane.io/composition-resource-name": "test-1-ipv4",
-							"crossplane.io/external-name": "sgr-06ebk86u45405h434"
+							"crossplane.io/external-name": "some-external-name"
 						},
 						"name": "test-1-ipv4"
 					}
@@ -411,10 +582,100 @@ func (s *functionSuite) TestRunFunction_AllExternalNamesAreSetAlready_ShouldDoNo
 	s.NoError(err)
 
 	s.Len(rsp.Results, 1)
-	s.Equalf(fnv1beta1.Severity_SEVERITY_NORMAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
+	s.Equalf(fnv1.Severity_SEVERITY_NORMAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
 	s.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl)
 
-	s.Equal(req.Desired, rsp.Desired)
+	for _, r := range rsp.Desired.GetResources() {
+		got := r.Resource.
+			GetFields()["spec"].GetStructValue().
+			GetFields()["forProvider"].GetStructValue().
+			GetFields()["tags"].GetStructValue().
+			GetFields()[externalNameTag].GetStringValue()
+
+		s.Equal("some-external-name", got)
+	}
+}
+
+func (s *functionSuite) TestRunFunction_AllExternalNamesAreSetAlready_ShouldEnsureAllExternalNameTagsAreSetButNotAllResourcesSupportTags() {
+	req := s.req()
+	req.Desired = &fnv1.State{
+		Resources: map[string]*fnv1.Resource{
+			"tagSupport": {Resource: resource.MustStructJSON(`
+				{
+					"apiVersion": "ec2.aws.upbound.io/v1beta1",
+					"kind": "SecurityGroup",
+					"metadata": {
+						"annotations": {
+							"crossplane.io/composition-resource-name": "tagSupport",
+							"crossplane.io/external-name": "some-external-name"
+						},
+						"name": "test"
+					}
+				}`)},
+			"noTagSupport": {Resource: resource.MustStructJSON(`
+				{
+					"apiVersion": "ec2.aws.upbound.io/v1beta1",
+					"kind": "SomeResourceWithoutTags",
+					"metadata": {
+						"annotations": {
+							"crossplane.io/composition-resource-name": "noTagSupport",
+							"crossplane.io/external-name": "some-external-name"
+						},
+						"name": "test"
+					}
+				}`)},
+		},
+	}
+	req.Observed = &fnv1.State{
+		Resources: map[string]*fnv1.Resource{
+			"tagSupport": {Resource: resource.MustStructJSON(`
+				{
+					"apiVersion": "ec2.aws.upbound.io/v1beta1",
+					"kind": "SecurityGroup",
+					"metadata": {
+						"annotations": {
+							"crossplane.io/composition-resource-name": "tagSupport",
+							"crossplane.io/external-name": "some-external-name"
+						},
+						"name": "test"
+					}
+				}`)},
+			"noTagSupport": {Resource: resource.MustStructJSON(`
+				{
+					"apiVersion": "ec2.aws.upbound.io/v1beta1",
+					"kind": "SomeResourceWithoutTags",
+					"metadata": {
+						"annotations": {
+							"crossplane.io/composition-resource-name": "noTagSupport",
+							"crossplane.io/external-name": "some-external-name"
+						},
+						"name": "test"
+					}
+				}`)},
+		},
+	}
+
+	fn := &Function{log: logging.NewNopLogger()}
+	rsp, err := fn.RunFunction(context.Background(), req)
+
+	s.NoError(err)
+
+	s.Len(rsp.Results, 1)
+	s.Equalf(fnv1.Severity_SEVERITY_NORMAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
+	s.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl)
+
+	got := rsp.Desired.GetResources()["tagSupport"].Resource.
+		GetFields()["spec"].GetStructValue().
+		GetFields()["forProvider"].GetStructValue().
+		GetFields()["tags"].GetStructValue().
+		GetFields()[externalNameTag].GetStringValue()
+	s.Equal("some-external-name", got)
+
+	_, tagsFieldExists := rsp.Desired.GetResources()["noTagSupport"].Resource.
+		GetFields()["spec"].GetStructValue().
+		GetFields()["forProvider"].GetStructValue().
+		GetFields()["tags"]
+	s.False(tagsFieldExists)
 }
 
 func (s *functionSuite) TestRunFunction_SomeExternalNamesAreSetAlready_ShouldSetOthers() {
@@ -472,8 +733,8 @@ func (s *functionSuite) TestRunFunction_SomeExternalNamesAreSetAlready_ShouldSet
 	}
 
 	req := s.req()
-	req.Observed = &fnv1beta1.State{
-		Resources: map[string]*fnv1beta1.Resource{
+	req.Observed = &fnv1.State{
+		Resources: map[string]*fnv1.Resource{
 			"securityGroup": {Resource: resource.MustStructJSON(`
 				{
 					"apiVersion": "ec2.test.upbound.io/v1beta1",
@@ -517,7 +778,7 @@ func (s *functionSuite) TestRunFunction_SomeExternalNamesAreSetAlready_ShouldSet
 	s.NoError(err)
 
 	s.Len(rsp.Results, 1)
-	s.Equalf(fnv1beta1.Severity_SEVERITY_NORMAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
+	s.Equalf(fnv1.Severity_SEVERITY_NORMAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
 	s.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl)
 
 	s.Equal(req.Desired.Resources["securityGroup"], rsp.Desired.Resources["securityGroup"])
@@ -551,7 +812,7 @@ func (s *functionSuite) TestRunFunction_UnresolvableTagFilter_ShouldFail() {
 	s.NoError(err)
 
 	s.Len(rsp.Results, 1)
-	s.Equalf(fnv1beta1.Severity_SEVERITY_FATAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
+	s.Equalf(fnv1.Severity_SEVERITY_FATAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
 	s.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl)
 
 	s.Equal(s.req().Desired, rsp.Desired)
@@ -601,7 +862,7 @@ func (s *functionSuite) TestRunFunction_MultipleTagFilterMatches_ShouldFail() {
 	s.NoError(err)
 
 	s.Len(rsp.Results, 1)
-	s.Equalf(fnv1beta1.Severity_SEVERITY_FATAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
+	s.Equalf(fnv1.Severity_SEVERITY_FATAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
 	s.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl)
 
 	s.Equal(s.req().Desired, rsp.Desired)
@@ -615,11 +876,12 @@ func (s *functionSuite) TestRunFunction_NoTagFilterMatches_ShouldDoNothing() {
 
 	s.NoError(err)
 
-	s.Len(rsp.Results, 1)
-	s.Equalf(fnv1beta1.Severity_SEVERITY_NORMAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
-	s.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl)
+	s.Len(rsp.Results, 2)
+	s.Equalf(fnv1.Severity_SEVERITY_NORMAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
+	s.Equalf(fnv1.Severity_SEVERITY_NORMAL, rsp.Results[1].Severity, "msg: %s", rsp.Results[0].GetMessage())
+	s.True(proto.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl))
 
-	s.Equal(s.req().Desired, rsp.Desired)
+	s.True(proto.Equal(s.req().Desired, rsp.Desired))
 }
 
 func (s *functionSuite) TestRunFunction_FilterMatchesButResourceHasNoExternalNameTag_ShouldFail() {
@@ -670,7 +932,7 @@ func (s *functionSuite) TestRunFunction_FilterMatchesButResourceHasNoExternalNam
 	s.NoError(err)
 
 	s.Len(rsp.Results, 1)
-	s.Equalf(fnv1beta1.Severity_SEVERITY_FATAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
+	s.Equalf(fnv1.Severity_SEVERITY_FATAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
 	s.Equal(durationpb.New(response.DefaultTTL), rsp.Meta.Ttl)
 
 	s.Equal(s.req().Desired, rsp.Desired)
