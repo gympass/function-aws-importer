@@ -6,7 +6,7 @@ import (
 
 	"github.com/crossplane/crossplane-runtime/pkg/fieldpath"
 	"github.com/crossplane/crossplane-runtime/pkg/meta"
-	fnv1beta1 "github.com/crossplane/function-sdk-go/proto/v1beta1"
+	fnv1 "github.com/crossplane/function-sdk-go/proto/v1"
 	"github.com/crossplane/function-sdk-go/request"
 	"github.com/crossplane/function-sdk-go/resource"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -21,7 +21,7 @@ type Resources struct {
 }
 
 // NewResources creates Resources based on req
-func NewResources(req *fnv1beta1.RunFunctionRequest) (Resources, error) {
+func NewResources(req *fnv1.RunFunctionRequest) (Resources, error) {
 	desiredComposed, err := request.GetDesiredComposedResources(req)
 	if err != nil {
 		return Resources{}, fmt.Errorf("extracting desired composed resources from request: %v", err)

@@ -5,7 +5,7 @@ run: prep-code
 	go run . --insecure --debug
 
 render:
-	crossplane beta render example/xr.yaml example/composition.yaml example/functions.yaml -r
+	crossplane render example/xr.yaml example/composition.yaml example/functions.yaml -r
 
 build-and-push-dev: prep-code
 ifndef FUNCTION_REGISTRY
