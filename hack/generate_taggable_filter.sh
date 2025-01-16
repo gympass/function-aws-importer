@@ -6,6 +6,8 @@ set -euo pipefail
 
 original_pwd=$(pwd)
 
+# TODO(lcaparelli): only fetch CRDs if the resulting map is not up-to-date already. Maybe we could store last fetched tag, and only pull if a newer tag exists.
+
 # Create a temporary directory
 TEMP_DIR=$(mktemp -d)
 
