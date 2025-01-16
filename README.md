@@ -17,6 +17,8 @@ present.
 The function's main goal is to avoid errors or duplication of resources on AWS when a Managed Resource is deleted by mistake,
 or in catastrophic events that lead to the recreation of Kubernetes clusters while the external resources still exist on AWS.
 
+For more details, see the [design docs](./design/README.md).
+
 ## Usage
 
 You can use the function by inserting a pipeline step that runs after you define the Managed Resources you want to ensure
@@ -92,4 +94,7 @@ FUNCTION_REGISTRY=my.cool.oci.registry make build-and-push-dev
 ```
 
 ## Known Issues
-N/A
+- Because the function is the one to ensure the crossplane-external-name tag on resources when the composition is rendered,
+it will not automatically import resources that only exist on AWS and were not created when the function was already in use.
+In this scenario, the function fails, as it finds the resource on AWS, but it has no tag to import it.
+This would not be a problem if Upjet itself ensured this tag on all resources: https://github.com/crossplane/upjet/issues/408
