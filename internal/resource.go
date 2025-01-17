@@ -6,7 +6,7 @@ import (
 
 	"github.com/crossplane/crossplane-runtime/pkg/fieldpath"
 	"github.com/crossplane/crossplane-runtime/pkg/meta"
-	fnv1beta1 "github.com/crossplane/function-sdk-go/proto/v1beta1"
+	fnv1 "github.com/crossplane/function-sdk-go/proto/v1"
 	"github.com/crossplane/function-sdk-go/request"
 	"github.com/crossplane/function-sdk-go/resource"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -21,7 +21,7 @@ type Resources struct {
 }
 
 // NewResources creates Resources based on req
-func NewResources(req *fnv1beta1.RunFunctionRequest) (Resources, error) {
+func NewResources(req *fnv1.RunFunctionRequest) (Resources, error) {
 	desiredComposed, err := request.GetDesiredComposedResources(req)
 	if err != nil {
 		return Resources{}, fmt.Errorf("extracting desired composed resources from request: %v", err)
@@ -101,6 +101,10 @@ func (r Resources) DesiredResourcesCompositionNames() []string {
 
 // SetDesiredExternalName sets the external name annotation to the desired composed resource matching the given composedName argument
 func (r Resources) SetDesiredExternalName(composedName string, name string) error {
+	if name == "" {
+		return nil
+	}
+
 	res, ok := r.desiredComposed[composedName]
 	if !ok {
 		return fmt.Errorf("composed name %q not found", composedName)
@@ -144,6 +148,28 @@ func (r Resources) DesiredExternalNames() map[string]string {
 		names[n] = res.externalName
 	}
 	return names
+}
+
+// EnsureExternalNameTags copies over values from the external-name annotation in observed resources to desired resources'
+// .spec.forProvider.tag if the desired resource supports it.
+func (r Resources) EnsureExternalNameTags(externalNameTag string) error {
+	for k, obs := range r.observedComposed {
+		if len(obs.externalName) == 0 || !taggableGroupKinds[obs.GroupKind()] {
+			continue
+		}
+
+		des, ok := r.desiredComposed[k]
+		if !ok {
+			continue
+		}
+
+		err := des.desiredComposed.Resource.SetString("spec.forProvider.tags."+externalNameTag, obs.externalName)
+		if err != nil {
+			return fmt.Errorf("setting .spec.forProvider.tags on %s: %v", des.compositionName, err)
+		}
+	}
+
+	return nil
 }
 
 // Resource represents a single managed resource, be it observed or desired

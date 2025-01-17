@@ -1,7 +1,7 @@
 apiVersion: aws.crossplane.gympass.com/v1alpha1
 kind: XSecurityGroup
 metadata:
-  name: test-pretendImAHash
+  name: test-pretend-im-a-hash
   labels:
     crossplane.io/claim-name: test
 spec:

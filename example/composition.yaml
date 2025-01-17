@@ -49,19 +49,6 @@ spec:
           fromFieldPath: metadata.labels[crossplane.io/claim-name]
           toFieldPath: spec.forProvider.tags[Name]
 
-        # TODO: check if we can make sure the first patch happens before the second.
-        # Last time I checked, all 'FromComposite' patches run before any 'ToComposite' patch.
-        # That can be a problem in the sense it needs two reconciliations to make this work,
-        # instead of one, and that might be a problem when we want to import things.
-        # It might not import right away and cause duplication errors.
-        # The time it takes between reconciliations of the XR might even be longer than we anticipate, because no errors occur.
-        - type: ToCompositeFieldPath
-          fromFieldPath: metadata.annotations[crossplane.io/external-name]
-          toFieldPath: status.externalName
-        - type: FromCompositeFieldPath
-          fromFieldPath: status.externalName
-          toFieldPath: spec.forProvider.tags[crossplane-external-name]
-
   - step: ensure-ipv4-ingress-rules
     functionRef:
       name: function-go-templating
@@ -74,11 +61,32 @@ spec:
         right: "]]"
       inline:
         template: |
-          [[ $observedXR := .observed.composite.resource ]]
-          [[ $claimName := index $observedXR.metadata.labels "crossplane.io/claim-name" ]]
-          [[- range $rule := $observedXR.spec.ingressRules ]]
-          [[- range $i, $cidrBlock := $rule.cidrBlocks ]]
-          [[- $resourceName := printf "%s-%d-%s" $claimName $i "ipv4" ]]
+          [[- $observedXR := .observed.composite.resource ]]
+          [[- $claimName := index $observedXR.metadata.labels "crossplane.io/claim-name" ]]
+          [[- if $observedXR.spec.name ]]
+          [[- $claimName = $observedXR.spec.name ]]
+          [[- end ]]
+          [[- range $i, $rule := $observedXR.spec.ingressRules ]]
+          [[- range $j, $cidrBlock := $rule.cidrBlocks ]]
+
+          [[- /*
+            We want each rule and each block to be uniquely identified, then we truncate
+            in case the user passes a name that's too large. We "reverse" truncate,
+            taking the last 263 chars, so that we don't lose the identifiers we're
+            adding to make it unique.
+
+            Name follows <claim name>-r<index of rule>-b<index of CIDR block>-ipv4.
+
+            A claim with two rules, with three blocks each, would result in:
+              - claimName-r0-b0-ipv4
+              - claimName-r0-b1-ipv4
+              - claimName-r0-b2-ipv4
+              - claimName-r1-b0-ipv4
+              - claimName-r1-b1-ipv4
+              - claimName-r1-b2-ipv4
+          */ -]]
+
+          [[- $resourceName := printf "%s-r%d-b%d-%s" $claimName $i $j "ipv4" | trunc -63 ]]
           apiVersion: ec2.aws.upbound.io/v1beta1
           kind: SecurityGroupIngressRule
           metadata:
