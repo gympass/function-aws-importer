@@ -25,3 +25,4 @@ go.work
 
 # Function's pkg build
 package/*.xpkg
+package/*.tar
