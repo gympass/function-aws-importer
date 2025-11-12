@@ -2,6 +2,7 @@ package internal
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/crossplane/crossplane-runtime/pkg/fieldpath"
@@ -12,7 +13,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-const externalNameAnnotationPath = `metadata.annotations["` + meta.AnnotationKeyExternalName + `"]`
+const (
+	externalNameAnnotationPath = `metadata.annotations["` + meta.AnnotationKeyExternalName + `"]`
+	regexpUpboundAWSGroup      = `^.+.aws.upbound.io/.+$`
+)
 
 // Resources aggregates desired and observed managed resources from a request
 type Resources struct {
@@ -37,17 +41,26 @@ func NewResources(req *fnv1.RunFunctionRequest) (Resources, error) {
 	}
 
 	for name, desired := range desiredComposed {
-		resources.desiredComposed[string(name)] = newResourceFromDesired(name, desired)
+		if isAWSManagedResource(desired.Resource.GetAPIVersion()) {
+			resources.desiredComposed[string(name)] = newResourceFromDesired(name, desired)
+		}
 	}
 	for name, obs := range observedComposed {
-		res, err := newResourceFromObserved(name, obs)
-		if err != nil {
-			return Resources{}, fmt.Errorf("interpreting %q observed resource: %v", name, err)
+		if isAWSManagedResource(obs.Resource.GetAPIVersion()) {
+			res, err := newResourceFromObserved(name, obs)
+			if err != nil {
+				return Resources{}, fmt.Errorf("interpreting %q observed resource: %v", name, err)
+			}
+			resources.observedComposed[string(name)] = res
 		}
-		resources.observedComposed[string(name)] = res
 	}
 
 	return resources, nil
+}
+
+func isAWSManagedResource(apiVersion string) bool {
+	match, _ := regexp.Match(regexpUpboundAWSGroup, []byte(apiVersion))
+	return match
 }
 
 // AllHaveExternalNamesSet returns true if all observed composed resources have the external-name annotation set.

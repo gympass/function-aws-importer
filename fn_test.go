@@ -39,6 +39,17 @@ func (s *functionSuite) req() *fnv1.RunFunctionRequest {
 		Input: resource.MustStructObject(s.in),
 		Desired: &fnv1.State{
 			Resources: map[string]*fnv1.Resource{
+				"someXR": {Resource: resource.MustStructJSON(`
+					{
+						"apiVersion": "acme.io/v1beta1",
+						"kind": "XSomeResource",
+						"metadata": {
+							"name": "test"
+						},
+						"spec": {
+							"deletionPolicy": "Orphan"
+                        }
+                    }`)},
 				"securityGroup": {Resource: resource.MustStructJSON(`
 					{
 						"apiVersion": "ec2.aws.upbound.io/v1beta1",
@@ -122,6 +133,17 @@ func (s *functionSuite) reqWithObservedExternalName(externalName string) *fnv1.R
 		Input: resource.MustStructObject(s.in),
 		Desired: &fnv1.State{
 			Resources: map[string]*fnv1.Resource{
+				"someXR": {Resource: resource.MustStructJSON(`
+					{
+						"apiVersion": "acme.io/v1beta1",
+						"kind": "XSomeResource",
+						"metadata": {
+							"name": "test"
+						},
+						"spec": {
+							"deletionPolicy": "Orphan"
+                        }
+                    }`)},
 				"securityGroup": {Resource: resource.MustStructJSON(`
 					{
 						"apiVersion": "ec2.aws.upbound.io/v1beta1",
@@ -199,6 +221,17 @@ func (s *functionSuite) reqWithObservedExternalName(externalName string) *fnv1.R
 		},
 		Observed: &fnv1.State{
 			Resources: map[string]*fnv1.Resource{
+				"someXR": {Resource: resource.MustStructJSON(`
+					{
+						"apiVersion": "acme.io/v1beta1",
+						"kind": "XSomeResource",
+						"metadata": {
+							"name": "test"
+						},
+						"spec": {
+							"deletionPolicy": "Orphan"
+                        }
+                    }`)},
 				"securityGroup": {Resource: resource.MustStructJSON(`
 					{
 						"apiVersion": "ec2.aws.upbound.io/v1beta1",
@@ -594,7 +627,11 @@ func (s *functionSuite) TestRunFunction_AllExternalNamesAreSetAlready_ShouldEnsu
 			GetFields()["tags"].GetStructValue().
 			GetFields()[externalNameTag].GetStringValue()
 
-		s.Equal("some-external-name", got)
+		if isManagedResource := r.Resource.GetFields()["apiVersion"].GetStringValue() != "acme.io/v1beta1"; isManagedResource {
+			s.Equal("some-external-name", got)
+		} else {
+			s.Empty(got)
+		}
 	}
 }
 
