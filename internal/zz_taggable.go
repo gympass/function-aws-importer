@@ -273,6 +273,8 @@ var taggableGroupKinds = map[string]bool{
 	"subnetgroup.docdb.aws.upbound.io":                                     true,
 	"directory.ds.aws.m.upbound.io":                                        true,
 	"directory.ds.aws.upbound.io":                                          true,
+	"cluster.dsql.aws.m.upbound.io":                                        true,
+	"cluster.dsql.aws.upbound.io":                                          true,
 	"tablereplica.dynamodb.aws.m.upbound.io":                               true,
 	"table.dynamodb.aws.m.upbound.io":                                      true,
 	"tablereplica.dynamodb.aws.upbound.io":                                 true,
