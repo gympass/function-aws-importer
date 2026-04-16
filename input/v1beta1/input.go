@@ -27,6 +27,12 @@ type Input struct {
 
 	// +optional
 	TagFilters []TagFilter `json:"tagFilters,omitempty"`
+
+	// EquivalentEmptyExternalNames maps lower-case GroupKind strings (Kind.group, same value this function uses for the
+	// crossplane-kind tag filter) to crossplane.io/external-name annotation values that should be treated as unset when
+	// deciding whether to look up the real external name in AWS (for example provider placeholders like sgr-stub).
+	// +optional
+	EquivalentEmptyExternalNames map[string][]string `json:"equivalentEmptyExternalNames,omitempty"`
 }
 
 func (in *Input) ResolveTagFilters(xr *resource.Composite) ([]types.TagFilter, error) {

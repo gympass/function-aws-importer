@@ -28,6 +28,16 @@ spec:
               may reject unrecognized values.
               More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
+          equivalentEmptyExternalNames:
+            additionalProperties:
+              items:
+                type: string
+              type: array
+            description: |-
+              EquivalentEmptyExternalNames maps lower-case GroupKind strings (Kind.group, same value this function uses for the
+              crossplane-kind tag filter) to crossplane.io/external-name annotation values that should be treated as unset when
+              deciding whether to look up the real external name in AWS (for example provider placeholders like sgr-stub).
+            type: object
           kind:
             description: |-
               Kind is a string value representing the REST resource this object represents.

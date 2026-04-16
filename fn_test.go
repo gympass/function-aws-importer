@@ -532,6 +532,30 @@ func (s *functionSuite) TestRunFunction_InvalidInput_ShouldFail() {
 				}},
 			},
 		},
+		{
+			name: "Input has equivalentEmptyExternalNames with empty groupKind key",
+			in: &v1beta1.Input{
+				EquivalentEmptyExternalNames: map[string][]string{
+					"": {"sgr-stub"},
+				},
+			},
+		},
+		{
+			name: "Input has equivalentEmptyExternalNames with empty values list",
+			in: &v1beta1.Input{
+				EquivalentEmptyExternalNames: map[string][]string{
+					"securitygroupingressrule.ec2.aws.upbound.io": {},
+				},
+			},
+		},
+		{
+			name: "Input has equivalentEmptyExternalNames with empty string value",
+			in: &v1beta1.Input{
+				EquivalentEmptyExternalNames: map[string][]string{
+					"securitygroupingressrule.ec2.aws.upbound.io": {""},
+				},
+			},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -550,6 +574,197 @@ func (s *functionSuite) TestRunFunction_InvalidInput_ShouldFail() {
 			s.Nil(rsp.Desired)
 		})
 	}
+}
+
+func (s *functionSuite) TestRunFunction_StubObservedExternalNameWithoutEquivalentInput_ShouldEarlyExitAndNotImport() {
+	req := s.req()
+	req.Observed = &fnv1.State{
+		Resources: map[string]*fnv1.Resource{
+			"securityGroup": {Resource: resource.MustStructJSON(`
+				{
+					"apiVersion": "ec2.aws.upbound.io/v1beta1",
+					"kind": "SecurityGroup",
+					"metadata": {
+						"annotations": {
+							"crossplane.io/composition-resource-name": "securityGroup",
+							"crossplane.io/external-name": "sg-0real123"
+						},
+						"name": "test"
+					}
+				}`)},
+			"test-0-ipv4": {Resource: resource.MustStructJSON(`
+				{
+					"apiVersion": "ec2.aws.upbound.io/v1beta1",
+					"kind": "SecurityGroupIngressRule",
+					"metadata": {
+						"annotations": {
+							"crossplane.io/composition-resource-name": "test-0-ipv4",
+							"crossplane.io/external-name": "sgr-stub"
+						},
+						"name": "test-0-ipv4"
+					}
+				}`)},
+			"test-1-ipv4": {Resource: resource.MustStructJSON(`
+				{
+					"apiVersion": "ec2.aws.upbound.io/v1beta1",
+					"kind": "SecurityGroupIngressRule",
+					"metadata": {
+						"annotations": {
+							"crossplane.io/composition-resource-name": "test-1-ipv4",
+							"crossplane.io/external-name": "sgr-stub"
+						},
+						"name": "test-1-ipv4"
+					}
+				}`)},
+		},
+	}
+
+	fn := &Function{log: logging.NewNopLogger(), client: &test.FakeGetResourcesAPIClient{}}
+	rsp, err := fn.RunFunction(context.Background(), req)
+
+	s.NoError(err)
+	s.Len(rsp.Results, 1)
+	s.Equalf(fnv1.Severity_SEVERITY_NORMAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
+	s.Contains(rsp.Results[0].Message, "already set for all resources")
+
+	var got string
+	got = rsp.GetDesired().GetResources()["test-0-ipv4"].GetResource().
+		GetFields()["metadata"].GetStructValue().
+		GetFields()["annotations"].GetStructValue().
+		GetFields()["crossplane.io/external-name"].GetStringValue()
+	s.Empty(got)
+
+	got = rsp.GetDesired().GetResources()["test-1-ipv4"].GetResource().
+		GetFields()["metadata"].GetStructValue().
+		GetFields()["annotations"].GetStructValue().
+		GetFields()["crossplane.io/external-name"].GetStringValue()
+	s.Empty(got)
+}
+
+func (s *functionSuite) TestRunFunction_EquivalentEmptyExternalNamesClearsStub_ShouldImportFromAWS() {
+	s.in.EquivalentEmptyExternalNames = map[string][]string{
+		"securitygroupingressrule.ec2.aws.upbound.io": {"sgr-stub"},
+	}
+
+	client := &test.FakeGetResourcesAPIClient{
+		Resources: []types.ResourceTagMapping{
+			{
+				Tags: []types.Tag{
+					{
+						Key:   aws.String(externalNameTag),
+						Value: aws.String("sg-imported"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyName),
+						Value: aws.String("test"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyKind),
+						Value: aws.String("securitygroups.ec2.aws.upbound.io"),
+					},
+				},
+			},
+			{
+				Tags: []types.Tag{
+					{
+						Key:   aws.String(externalNameTag),
+						Value: aws.String("sgr-imported-0"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyName),
+						Value: aws.String("test-0-ipv4"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyKind),
+						Value: aws.String("securitygroupingressrules.ec2.aws.upbound.io"),
+					},
+				},
+			},
+			{
+				Tags: []types.Tag{
+					{
+						Key:   aws.String(externalNameTag),
+						Value: aws.String("sgr-imported-1"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyName),
+						Value: aws.String("test-1-ipv4"),
+					},
+					{
+						Key:   aws.String(runtimeresource.ExternalResourceTagKeyKind),
+						Value: aws.String("securitygroupingressrules.ec2.aws.upbound.io"),
+					},
+				},
+			},
+		},
+	}
+
+	req := s.req()
+	req.Observed = &fnv1.State{
+		Resources: map[string]*fnv1.Resource{
+			"securityGroup": {Resource: resource.MustStructJSON(`
+				{
+					"apiVersion": "ec2.aws.upbound.io/v1beta1",
+					"kind": "SecurityGroup",
+					"metadata": {
+						"annotations": {
+							"crossplane.io/composition-resource-name": "securityGroup",
+							"crossplane.io/external-name": "sg-0real123"
+						},
+						"name": "test"
+					}
+				}`)},
+			"test-0-ipv4": {Resource: resource.MustStructJSON(`
+				{
+					"apiVersion": "ec2.aws.upbound.io/v1beta1",
+					"kind": "SecurityGroupIngressRule",
+					"metadata": {
+						"annotations": {
+							"crossplane.io/composition-resource-name": "test-0-ipv4",
+							"crossplane.io/external-name": "sgr-stub"
+						},
+						"name": "test-0-ipv4"
+					}
+				}`)},
+			"test-1-ipv4": {Resource: resource.MustStructJSON(`
+				{
+					"apiVersion": "ec2.aws.upbound.io/v1beta1",
+					"kind": "SecurityGroupIngressRule",
+					"metadata": {
+						"annotations": {
+							"crossplane.io/composition-resource-name": "test-1-ipv4",
+							"crossplane.io/external-name": "sgr-stub"
+						},
+						"name": "test-1-ipv4"
+					}
+				}`)},
+		},
+	}
+
+	fn := &Function{log: logging.NewNopLogger(), client: client}
+	rsp, err := fn.RunFunction(context.Background(), req)
+
+	s.NoError(err)
+	s.Len(rsp.Results, 1)
+	s.Equalf(fnv1.Severity_SEVERITY_NORMAL, rsp.Results[0].Severity, "msg: %s", rsp.Results[0].GetMessage())
+
+	got := rsp.GetDesired().GetResources()["securityGroup"].GetResource().
+		GetFields()["metadata"].GetStructValue().
+		GetFields()["annotations"].GetStructValue().
+		GetFields()["crossplane.io/external-name"].GetStringValue()
+	s.Equal("sg-imported", got)
+
+	got = rsp.GetDesired().GetResources()["test-0-ipv4"].GetResource().
+		GetFields()["metadata"].GetStructValue().
+		GetFields()["annotations"].GetStructValue().
+		GetFields()["crossplane.io/external-name"].GetStringValue()
+	s.Equal("sgr-imported-0", got)
+
+	got = rsp.GetDesired().GetResources()["test-1-ipv4"].GetResource().
+		GetFields()["metadata"].GetStructValue().
+		GetFields()["annotations"].GetStructValue().
+		GetFields()["crossplane.io/external-name"].GetStringValue()
+	s.Equal("sgr-imported-1", got)
 }
 
 func (s *functionSuite) TestRunFunction_NoDesiredComposedResources_ShouldDoNothing() {
