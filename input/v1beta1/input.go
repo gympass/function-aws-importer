@@ -1,6 +1,6 @@
 // Package v1beta1 contains the input type for this Function
 // +kubebuilder:object:generate=true
-// +groupName=template.fn.crossplane.io
+// +groupName=aws-importer.fn.wellhub.cloud
 // +versionName=v1beta1
 package v1beta1
 
@@ -66,6 +66,20 @@ func (in *Input) Validate() error {
 	for _, tf := range in.TagFilters {
 		if err := tf.validate(); err != nil {
 			return fmt.Errorf("invalid tag filter: %v", err)
+		}
+	}
+
+	for gk, vals := range in.EquivalentEmptyExternalNames {
+		if len(gk) == 0 {
+			return errors.New(`equivalentEmptyExternalNames: groupKind key must not be empty`)
+		}
+		if len(vals) == 0 {
+			return fmt.Errorf("equivalentEmptyExternalNames[%q]: values list must not be empty", gk)
+		}
+		for _, v := range vals {
+			if len(v) == 0 {
+				return fmt.Errorf("equivalentEmptyExternalNames[%q]: values must not contain empty strings", gk)
+			}
 		}
 	}
 

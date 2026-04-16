@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.1
-  name: inputs.template.fn.crossplane.io
+  name: inputs.aws-importer.fn.wellhub.cloud
 spec:
-  group: template.fn.crossplane.io
+  group: aws-importer.fn.wellhub.cloud
   names:
     categories:
     - crossplane

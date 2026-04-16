@@ -60,7 +60,7 @@ func NewResources(req *fnv1.RunFunctionRequest) (Resources, error) {
 
 // TreatEquivalentEmptyExternalNames clears in-memory observed external names that match configured placeholder values
 // for the resource's GroupKind (same string as GroupKind()). Used before EnsureExternalNameTags and AllHaveExternalNamesSet.
-// Map keys are compared case-insensitively to GroupKind(); each value list is usually a single sentinel string.
+// Map keys are compared case-insensitively to GroupKind(); each value list is usually a single placeholder string.
 func (r *Resources) TreatEquivalentEmptyExternalNames(byGroupKind map[string][]string) {
 	if len(byGroupKind) == 0 {
 		return
