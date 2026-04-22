@@ -58,6 +58,33 @@ func NewResources(req *fnv1.RunFunctionRequest) (Resources, error) {
 	return resources, nil
 }
 
+// TreatEquivalentEmptyExternalNames clears in-memory observed external names that match configured placeholder values
+// for the resource's GroupKind (same string as GroupKind()). Used before EnsureExternalNameTags and AllHaveExternalNamesSet.
+// Map keys are compared case-insensitively to GroupKind(); each value list is usually a single placeholder string.
+func (r *Resources) TreatEquivalentEmptyExternalNames(byGroupKind map[string][]string) {
+	if len(byGroupKind) == 0 {
+		return
+	}
+nextObserved:
+	for name, res := range r.observedComposed {
+		if res.externalName == "" {
+			continue
+		}
+		for gk, vals := range byGroupKind {
+			if !strings.EqualFold(gk, res.GroupKind()) {
+				continue
+			}
+			for _, v := range vals {
+				if v == res.externalName {
+					res.externalName = ""
+					r.observedComposed[name] = res
+					continue nextObserved
+				}
+			}
+		}
+	}
+}
+
 func isAWSManagedResource(apiVersion string) bool {
 	match, _ := regexp.Match(regexpUpboundAWSGroup, []byte(apiVersion))
 	return match

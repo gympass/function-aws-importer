@@ -69,6 +69,8 @@ func (f *Function) RunFunction(ctx context.Context, req *fnv1.RunFunctionRequest
 		return rsp, nil
 	}
 
+	resources.TreatEquivalentEmptyExternalNames(in.EquivalentEmptyExternalNames)
+
 	err = resources.EnsureExternalNameTags(externalNameTag)
 	if err != nil {
 		f.log.Info("Failed to ensure external name tags.",

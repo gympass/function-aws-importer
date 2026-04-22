@@ -1,6 +1,6 @@
 // Package v1beta1 contains the input type for this Function
 // +kubebuilder:object:generate=true
-// +groupName=template.fn.crossplane.io
+// +groupName=aws-importer.fn.wellhub.cloud
 // +versionName=v1beta1
 package v1beta1
 
@@ -27,6 +27,12 @@ type Input struct {
 
 	// +optional
 	TagFilters []TagFilter `json:"tagFilters,omitempty"`
+
+	// EquivalentEmptyExternalNames maps lower-case GroupKind strings (Kind.group, same value this function uses for the
+	// crossplane-kind tag filter) to crossplane.io/external-name annotation values that should be treated as unset when
+	// deciding whether to look up the real external name in AWS (for example provider placeholders like sgr-stub).
+	// +optional
+	EquivalentEmptyExternalNames map[string][]string `json:"equivalentEmptyExternalNames,omitempty"`
 }
 
 func (in *Input) ResolveTagFilters(xr *resource.Composite) ([]types.TagFilter, error) {
@@ -60,6 +66,20 @@ func (in *Input) Validate() error {
 	for _, tf := range in.TagFilters {
 		if err := tf.validate(); err != nil {
 			return fmt.Errorf("invalid tag filter: %v", err)
+		}
+	}
+
+	for gk, vals := range in.EquivalentEmptyExternalNames {
+		if len(gk) == 0 {
+			return errors.New(`equivalentEmptyExternalNames: groupKind key must not be empty`)
+		}
+		if len(vals) == 0 {
+			return fmt.Errorf("equivalentEmptyExternalNames[%q]: values list must not be empty", gk)
+		}
+		for _, v := range vals {
+			if len(v) == 0 {
+				return fmt.Errorf("equivalentEmptyExternalNames[%q]: values must not contain empty strings", gk)
+			}
 		}
 	}
 

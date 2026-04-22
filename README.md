@@ -67,6 +67,69 @@ spec:
 The composed resources must support tagging via `.spec.forProvider.tags`. The function patches this field in composed
 resources when rendering the composition with the value from the "crossplane.io/external-name" annotation.
 
+### Tag filters (optional input)
+
+For each composed managed resource, the function calls the Resource Groups Tagging API with tag filters that always
+include `crossplane-name` (the resource’s Kubernetes metadata name) and `crossplane-kind` (lower-case `Kind.group`). You
+can add **extra** filters via the optional `Input.tagFilters` list so AWS matches only resources in a narrower scope (for
+example an account- or environment-specific tag).
+
+Each entry has:
+
+- **`key`**: tag key sent to AWS.
+- **`strategy`**: how the tag value is chosen:
+  - `value` — use the literal **`value`** field.
+  - `valuePath` — read the composite (XR) field at **`valuePath`** and use that string as the tag value (same fieldpath
+    style as elsewhere in Crossplane).
+
+Those filters are combined with `crossplane-name` and `crossplane-kind` for every lookup; all must match for a resource
+to be considered.
+
+Example:
+
+```yaml
+input:
+  apiVersion: aws-importer.fn.wellhub.cloud/v1beta1
+  kind: Input
+  tagFilters:
+    - key: Environment
+      strategy: value
+      value: production
+    - key: TenantId
+      strategy: valuePath
+      valuePath: spec.tenantId
+```
+
+The full `Input` schema (including `tagFilters` and `equivalentEmptyExternalNames`) is in the
+[Input CRD](./package/input/aws-importer.fn.wellhub.cloud_inputs.yaml).
+
+### Placeholder external names (optional input)
+
+If the provider sets `crossplane.io/external-name` to a **placeholder** (for example `sgr-stub` on a security group rule)
+before this function runs, the function would otherwise treat any non-empty annotation as final and skip the AWS import
+path. You can list those placeholder values per managed resource **GroupKind** so they are ignored for that decision only
+(the real ID is still resolved from AWS using `crossplane-name` / `crossplane-kind` tags and `crossplane-external-name` on
+the resource).
+
+Configure the optional function `Input` field `equivalentEmptyExternalNames`: keys are **GroupKind** strings in the same
+form this function uses for the `crossplane-kind` tag filter (lower-case `Kind.group`, e.g.
+`securitygroupingressrule.ec2.aws.upbound.io` for `SecurityGroupIngressRule`). Keys are matched case-insensitively.
+Values are lists of annotation strings to treat as unset; most of the time you only need one value per kind.
+
+Example pipeline step:
+
+```yaml
+- step: import-sg-if-exists
+  functionRef:
+    name: function-aws-importer
+  input:
+    apiVersion: aws-importer.fn.wellhub.cloud/v1beta1
+    kind: Input
+    equivalentEmptyExternalNames:
+      securitygroupingressrule.ec2.aws.upbound.io:
+        - sgr-stub
+```
+
 ## Development
 
 Run the function locally:

@@ -1,0 +1,33 @@
+# Version control (large; not needed to compile)
+.git
+
+# Crossplane package layout and build outputs — not imported by `go build`
+package/
+
+# Examples and design material
+example/
+design/
+
+# CI, scripts, and editor/OS noise
+.github/
+hack/
+.idea
+.cursor
+.DS_Store
+
+# Docs and legal (not compiled into the binary)
+*.md
+LICENSE
+
+# Go / test artifacts
+*.test
+*.out
+coverage.*
+
+# Local secrets / env
+.env
+.env.*
+
+# Saved images / archives from local packaging runs
+*.tar
+*.xpkg
